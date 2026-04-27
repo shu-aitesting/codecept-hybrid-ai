@@ -25,7 +25,7 @@ const isCI = process.env.CI === 'true';
 
 export const config: CodeceptJS.MainConfig = {
   name: 'codecept-hybrid',
-  tests: './tests/**/*.test.ts',
+  tests: './tests/{api,ui,visual}/**/*.test.ts',
   output: './output',
   helpers: {
     Playwright: {
