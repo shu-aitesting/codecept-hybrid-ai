@@ -22,7 +22,7 @@ export class CohereProvider extends BaseProvider {
     super();
     const key = opts.apiKey ?? process.env.COHERE_API_KEY;
     this.client = key ? new CohereClient({ token: key }) : null;
-    this.model = opts.model ?? 'command-r-plus';
+    this.model = opts.model ?? 'command-a-03-2025';
   }
 
   isConfigured(): boolean {
