@@ -9,6 +9,9 @@ type dashboardPage = typeof import('./src/ui/pages/DashboardPage');
 type authSteps = typeof import('./src/ui/steps/AuthSteps');
 type RestHelper = import('./src/core/helpers/RestHelper');
 type VisualHelper = import('./src/core/helpers/VisualHelper');
+type ExpectHelper = import('@codeceptjs/expect-helper');
+type FileSystem = import('codeceptjs/lib/helper/FileSystem');
+type CustomSteps = import('./src/types/custom-steps').CustomSteps;
 
 declare namespace CodeceptJS {
   interface SupportObject {
@@ -22,14 +25,8 @@ declare namespace CodeceptJS {
     dashboardPage: dashboardPage;
     authSteps: authSteps;
   }
-  interface Methods extends Playwright, REST, RestHelper, VisualHelper {}
-  interface I extends ReturnType<steps_file>, WithTranslation<Methods> {
-    assertEqual<T>(actual: T, expected: T, message?: string): void;
-    assertTrue(condition: unknown, message?: string): void;
-    assertFalse(condition: unknown, message?: string): void;
-    assertMatches(value: string, pattern: RegExp, message?: string): void;
-    assertDeepEqual<T>(actual: T, expected: T, message?: string): void;
-  }
+  interface Methods extends Playwright, REST, RestHelper, VisualHelper, ExpectHelper, FileSystem {}
+  interface I extends ReturnType<steps_file>, WithTranslation<Methods>, CustomSteps {}
   namespace Translation {
     interface Actions {}
   }

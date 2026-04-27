@@ -337,16 +337,17 @@ Trong test chỉ cần `I.loginAs('admin')` — không care low-level locators.
 
 ---
 
-### Bước 10 — Test Data Management (Faker + AI-Driven)
+### Bước 10 — Test Data Management (Faker + ApiDataFactory + AI-Driven)
 
 **Làm gì**:
 - **Static fixtures**: `src/fixtures/*.json` cho data cố định (admin user, test products).
 - **Faker**: `@faker-js/faker` sinh email, phone, address random.
+- **ApiDataFactory** *(CodeceptJS built-in)*: tạo/xóa test data qua REST API tự động trong lifecycle test — lý tưởng cho hybrid testing (tạo user qua API → test UI → auto cleanup). Dùng `rosie` factories + `I.have('user', {...})` / `I.haveMultiple('post', 3)`.
 - **Schema-driven**: `src/ai/data/SchemaDrivenFaker.ts` — input Zod/JSON Schema → output data hợp lệ.
 - **AI-driven (bước nâng cao)**: `AIDataGenerator.ts` — prompt: "Generate 5 edge-case user registrations in Vietnam" → Claude/Cohere trả JSON array → validate schema → dùng trong test.
 - Store generated data vào cache (file hoặc Redis) để test deterministic khi re-run.
 
-**Why quan trọng**: Hardcoded data = test fragile (duplicate email → insert fail). Faker giải quyết 80%, nhưng **edge cases phức tạp** (user có tên Unicode dài, address nhiều dòng, credit card hợp lệ theo Luhn) thì AI sinh nhanh và thực tế hơn. Cache để đảm bảo reproducible.
+**Why quan trọng**: Hardcoded data = test fragile (duplicate email → insert fail). Faker giải quyết 80%, nhưng **edge cases phức tạp** (user có tên Unicode dài, address nhiều dòng, credit card hợp lệ theo Luhn) thì AI sinh nhanh và thực tế hơn. `ApiDataFactory` giải quyết vấn đề test isolation — mỗi test có data riêng, không phụ thuộc vào state DB từ test trước. Cache để đảm bảo reproducible.
 
 ---
 

@@ -51,6 +51,10 @@ export const config: CodeceptJS.MainConfig = {
     VisualHelper: {
       require: './src/core/helpers/VisualHelper.ts',
     },
+    ExpectHelper: {
+      require: '@codeceptjs/expect-helper',
+    },
+    FileSystem: {},
   },
   include: {
     I: './steps_file.ts',

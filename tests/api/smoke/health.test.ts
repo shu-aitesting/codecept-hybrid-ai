@@ -28,6 +28,6 @@ Scenario('POST /posts creates a post', async ({ I }) => {
 
 Scenario('GET /search returns results for valid query', async ({ I }) => {
   const res = await I.sendGet('/users');
-  I.assertEqual(res.status, 200);
-  I.assertTrue(Array.isArray(res.body));
+  I.expectEqual(res.status, 200);
+  I.expectTrue(Array.isArray(res.body));
 });

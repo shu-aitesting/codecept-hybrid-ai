@@ -1227,6 +1227,66 @@ Page Fragments + Step Objects.
 - 💡 **Học gì**: Schema-driven = single source of truth (Zod schema). Tự suy faker từ tên field (`email` → faker.internet.email). Sau B11 sẽ thay rule-based bằng AI để smart hơn.
 - ✅ Verify: typecheck pass.
 
+### 10.5 — Tích hợp ApiDataFactory (CodeceptJS built-in)
+
+- 🎯 Tạo/xóa test data qua REST API **tự động** trong lifecycle test — không cần viết beforeEach/afterEach thủ công.
+- ⚙️ **Cài dependency**: `npm i -D rosie @types/rosie`
+- ⚙️ **Thêm helper vào `codecept.conf.ts`**:
+  ```typescript
+  ApiDataFactory: {
+    endpoint: appConfig.apiUrl,
+    cleanup: true,           // tự DELETE record sau mỗi test
+    factories: {
+      user: {
+        factory: './src/fixtures/factories/UserApiFactory.ts',
+        // create: POST /users  (default: /{resource})
+        // delete: DELETE /users/{id}  (default: /{resource}/{id})
+      },
+      post: {
+        factory: './src/fixtures/factories/PostApiFactory.ts',
+      },
+    },
+  },
+  ```
+- ⚙️ **Tạo factory file** `src/fixtures/factories/UserApiFactory.ts`:
+  ```typescript
+  import { Factory } from 'rosie';
+  import { faker } from '@faker-js/faker';
+
+  export default new Factory()
+    .attr('email', () => faker.internet.email().toLowerCase())
+    .attr('name', () => faker.person.fullName())
+    .attr('password', () => faker.internet.password({ length: 12, prefix: 'Aa1!' }));
+  ```
+- ⚙️ **Dùng trong hybrid test**:
+  ```typescript
+  // Tạo user qua API → test UI → ApiDataFactory tự DELETE sau test
+  Scenario('New user sees empty dashboard', async ({ I }) => {
+    const user = await I.have('user');        // POST /users → trả object với id
+    await I.amOnPage('/login');
+    await I.fillField('Email', user.email);
+    await I.fillField('Password', user.password);
+    await I.click('Login');
+    I.see('Welcome');
+  });
+
+  // Tạo nhiều records
+  Scenario('Admin sees all users in list', async ({ I }) => {
+    await I.haveMultiple('user', 5);         // tạo 5 users
+    await I.amOnPage('/admin/users');
+    I.see('5 users');
+  });
+  ```
+- ⚙️ **Thêm vào `steps.d.ts`**:
+  ```typescript
+  // Trong interface Methods:
+  interface Methods extends Playwright, REST, RestHelper, VisualHelper, ExpectHelper, ApiDataFactory {}
+  // Thêm type import:
+  type ApiDataFactory = import('codeceptjs').ApiDataFactory;
+  ```
+- 💡 **Học gì**: `ApiDataFactory` = **test isolation hoàn hảo** — mỗi Scenario có data riêng, không phụ thuộc vào state DB từ test trước. `cleanup: true` đảm bảo không để lại garbage data. `rosie` factory cho phép override field cụ thể (`I.have('user', { role: 'admin' })`). Đây là pattern chuẩn cho hybrid UI+API testing.
+- ✅ Verify: `I.have('user')` tạo được record, record bị xóa sau test (check server log / DB).
+
 ---
 
 # PHẦN 5: AI FEATURES (Bước 11–12)
