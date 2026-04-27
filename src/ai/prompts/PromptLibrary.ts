@@ -36,8 +36,7 @@ export class PromptLibrary {
   private readonly cache = new Map<string, ParsedPrompt>();
 
   constructor(opts: PromptLibraryOpts = {}) {
-    this.promptDir =
-      opts.promptDir ?? path.join(process.cwd(), 'config', 'ai', 'prompts');
+    this.promptDir = opts.promptDir ?? path.join(process.cwd(), 'config', 'ai', 'prompts');
   }
 
   load(name: string): ParsedPrompt {
@@ -111,7 +110,8 @@ export class PromptLibrary {
       { container: root, indent: -1 },
     ];
 
-    for (const rawLine of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const rawLine = lines[i];
       if (!rawLine.trim() || rawLine.trim().startsWith('#')) continue;
       const indent = rawLine.match(/^ */)![0].length;
       const line = rawLine.trim();
@@ -121,46 +121,67 @@ export class PromptLibrary {
       const top = stack[stack.length - 1];
 
       if (line.startsWith('- ')) {
-        const item = line.slice(2);
-        const arr = top.container as unknown[];
-        if (item.includes(':')) {
-          const obj: Record<string, unknown> = {};
-          const [k, ...rest] = item.split(':');
-          const value = rest.join(':').trim();
-          if (value) obj[k.trim()] = this.castScalar(value);
-          arr.push(obj);
-          stack.push({ container: obj, indent });
-        } else {
-          arr.push(this.castScalar(item));
-        }
-        continue;
-      }
-
-      const idx = line.indexOf(':');
-      if (idx === -1) continue;
-      const key = line.slice(0, idx).trim();
-      const value = line.slice(idx + 1).trim();
-      const obj = top.container as Record<string, unknown>;
-      if (!value) {
-        // Unknown shape — could be either object or list. Default to list when
-        // the next non-empty line begins with "- ".
-        const next = lines
-          .slice(lines.indexOf(rawLine) + 1)
-          .find((l) => l.trim());
-        if (next && next.trim().startsWith('- ')) {
-          const arr: unknown[] = [];
-          obj[key] = arr;
-          stack.push({ container: arr, indent });
-        } else {
-          const child: Record<string, unknown> = {};
-          obj[key] = child;
-          stack.push({ container: child, indent });
-        }
+        this.parseListItem(line.slice(2), indent, top.container as unknown[], stack);
       } else {
-        obj[key] = this.castScalar(value);
+        this.parseKeyValue(line, indent, lines, i, top.container as Record<string, unknown>, stack);
       }
     }
     return root as FrontMatter;
+  }
+
+  private parseListItem(
+    item: string,
+    indent: number,
+    arr: unknown[],
+    stack: Array<{ container: Record<string, unknown> | unknown[]; indent: number }>,
+  ): void {
+    if (!item.includes(':')) {
+      arr.push(this.castScalar(item));
+      return;
+    }
+    const obj: Record<string, unknown> = {};
+    const [k, ...rest] = item.split(':');
+    const value = rest.join(':').trim();
+    arr.push(obj);
+    stack.push({ container: obj, indent });
+    if (value) {
+      obj[k.trim()] = this.castScalar(value);
+    } else {
+      // e.g. "- input:" — the key maps to a nested object; push child so that
+      // sibling keys at indent+2 pop it and land back on the item object.
+      const child: Record<string, unknown> = {};
+      obj[k.trim()] = child;
+      stack.push({ container: child, indent: indent + 2 });
+    }
+  }
+
+  private parseKeyValue(
+    line: string,
+    indent: number,
+    lines: string[],
+    lineIndex: number,
+    obj: Record<string, unknown>,
+    stack: Array<{ container: Record<string, unknown> | unknown[]; indent: number }>,
+  ): void {
+    const idx = line.indexOf(':');
+    if (idx === -1) return;
+    const key = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1).trim();
+    if (value) {
+      obj[key] = this.castScalar(value);
+      return;
+    }
+    // No value — peek at the next non-empty line to decide array vs object.
+    const next = lines.slice(lineIndex + 1).find((l) => l.trim());
+    if (next?.trim().startsWith('- ')) {
+      const arr: unknown[] = [];
+      obj[key] = arr;
+      stack.push({ container: arr, indent });
+    } else {
+      const child: Record<string, unknown> = {};
+      obj[key] = child;
+      stack.push({ container: child, indent });
+    }
   }
 
   private castScalar(raw: string): unknown {
@@ -168,20 +189,14 @@ export class PromptLibrary {
     if (raw === 'false') return false;
     if (raw === 'null' || raw === '~') return null;
     if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
-    if (
-      (raw.startsWith('{') && raw.endsWith('}')) ||
-      (raw.startsWith('[') && raw.endsWith(']'))
-    ) {
+    if ((raw.startsWith('{') && raw.endsWith('}')) || (raw.startsWith('[') && raw.endsWith(']'))) {
       try {
         return JSON.parse(raw);
       } catch {
         // fall through and return raw string
       }
     }
-    if (
-      (raw.startsWith('"') && raw.endsWith('"')) ||
-      (raw.startsWith("'") && raw.endsWith("'"))
-    ) {
+    if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
       return raw.slice(1, -1);
     }
     return raw;

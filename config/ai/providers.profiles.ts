@@ -17,11 +17,12 @@ export interface ProfileSpec {
  */
 export const profiles: Record<TaskProfile, ProfileSpec> = {
   heal: {
-    primary: 'anthropic:haiku',
-    fallback: ['cohere', 'g4f'],
+    // Cohere promoted to primary — Anthropic key not available in current env.
+    // Swap back to 'anthropic:haiku' when ANTHROPIC_API_KEY is configured.
+    primary: 'cohere',
+    fallback: ['anthropic:haiku', 'g4f'],
     temperature: 0,
     maxTokens: 256,
-    cacheSystem: true,
   },
   codegen: {
     primary: 'anthropic:sonnet',

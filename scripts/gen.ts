@@ -6,6 +6,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import ora from 'ora';
 
+import '../src/core/config/ConfigLoader';
 import { CurlToApiAgent } from '../src/ai/codegen/CurlToApiAgent';
 import { HtmlToFragmentAgent } from '../src/ai/codegen/HtmlToFragmentAgent';
 import { ScenarioGeneratorAgent } from '../src/ai/codegen/ScenarioGeneratorAgent';
@@ -146,7 +147,11 @@ program
   .option('--story <story>', 'User story text')
   .option('--story-file <path>', 'Read user story from file')
   .option('--name <name>', 'Feature name (PascalCase)', 'GeneratedFeature')
-  .option('--output-dir <dir>', 'Output directory for .feature and .steps.ts', path.join(process.cwd(), 'tests', 'bdd'))
+  .option(
+    '--output-dir <dir>',
+    'Output directory for .feature and .steps.ts',
+    path.join(process.cwd(), 'tests', 'bdd'),
+  )
   .option('--dry-run', 'Preview output without writing files')
   .option('--no-cache', 'Skip idempotency cache')
   .option('--max-retries <n>', 'Max LLM retries on validation failure', '2')
