@@ -1,0 +1,8 @@
+node_modules
+dist
+output
+.git
+.husky
+.env.dev
+.env.staging
+.env.prod

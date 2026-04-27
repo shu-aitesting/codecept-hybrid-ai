@@ -1,0 +1,15 @@
+node_modules/
+dist/
+output/
+.env
+.env.dev
+.env.staging
+.env.prod
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+coverage/
+.nyc_output/
