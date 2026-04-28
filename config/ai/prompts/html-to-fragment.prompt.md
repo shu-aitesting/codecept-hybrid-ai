@@ -3,56 +3,111 @@ task: html-to-fragment
 model: anthropic:sonnet
 examples:
   - input:
-      fragmentName: LoginForm
-      dom: "<form data-testid=\"login-form\"><input id=\"email\" type=\"email\" placeholder=\"Email\"><input id=\"password\" type=\"password\"><button data-testid=\"login-btn\">Login</button></form>"
-      elements: "[{\"tag\":\"input\",\"top5\":[\"#email\",\"[type=\\\"email\\\"]\"]},{\"tag\":\"input\",\"top5\":[\"#password\",\"[type=\\\"password\\\"]\"]},{\"tag\":\"button\",\"top5\":[\"[data-testid=\\\"login-btn\\\"]\",\"button\"]}]"
-    output: {"fragmentTs":"import { BaseFragment } from '../base/BaseFragment';\n\nclass LoginFormFragment extends BaseFragment {\n  constructor() {\n    super('[data-testid=\"login-form\"]');\n  }\n\n  selectors = {\n    email: '#email',\n    password: '#password',\n    submitButton: '[data-testid=\"login-btn\"]',\n  };\n\n  async waitToLoad(): Promise<void> {\n    this.I.waitForElement(this.root, 10);\n  }\n\n  async fillCredentials(email: string, password: string): Promise<void> {\n    this.within(() => {\n      this.I.fillField(this.selectors.email, email);\n      this.I.fillField(this.selectors.password, password);\n    });\n  }\n\n  async submit(): Promise<void> {\n    this.within(() => this.I.click(this.selectors.submitButton));\n  }\n}\n\nexport = LoginFormFragment;\n","pageTs":"import LoginFormFragment = require('../fragments/features/LoginFormFragment');\n\nimport { BasePage } from './base/BasePage';\n\nexport class LoginFormPage extends BasePage {\n  path = '/login';\n  loginForm = new LoginFormFragment();\n\n  async waitForLoad(): Promise<void> {\n    await this.loginForm.waitToLoad();\n  }\n\n  async loginWith(email: string, password: string): Promise<void> {\n    await this.loginForm.fillCredentials(email, password);\n    await this.loginForm.submit();\n  }\n}\n","testTs":"import { LoginFormPage } from '@ui/pages/LoginFormPage';\n\nconst page = new LoginFormPage();\n\nFeature('Login Form').tag('@ui').tag('@smoke');\n\nScenario('User can login with valid credentials @smoke', async ({ I }) => {\n  await page.open();\n  await page.loginWith('user@example.com', 'Password1!');\n  I.seeInCurrentUrl('/dashboard');\n});\n\nScenario('Login fails with invalid credentials @negative', async ({ I }) => {\n  await page.open();\n  await page.loginWith('bad@test.com', 'wrong');\n  I.see('Invalid credentials');\n});\n"}
+      fragmentName: Shop
+      dom: "<header><nav aria-label=\"Main\"><a href=\"/\">Home</a><a href=\"/products\">Products</a></nav></header><main><section class=\"hero\"><h1>Welcome</h1><a href=\"/shop\" data-testid=\"hero-cta\">Shop Now</a></section></main><footer><p>© 2025</p></footer>"
+      elements: "[{\"tag\":\"a\",\"top3\":[\"[data-testid=\\\"hero-cta\\\"]\",\"[href=\\\"/shop\\\"]\",\"a\"]},{\"tag\":\"a\",\"top3\":[\"[href=\\\"/\\\"]\",\"a\"]}]"
+      segments: "[{\"name\":\"Header\",\"landmark\":\"banner\",\"rootSelector\":\"header\"},{\"name\":\"MainContent\",\"landmark\":\"main\",\"rootSelector\":\"main\"},{\"name\":\"Footer\",\"landmark\":\"contentinfo\",\"rootSelector\":\"footer\"}]"
+      hasSegments: true
+    output: {"fragments":[{"name":"ShopHeader","fragmentTs":"import { BaseFragment } from '../base/BaseFragment';\n\nclass ShopHeaderFragment extends BaseFragment {\n  constructor() {\n    super('header');\n  }\n\n  selectors = {\n    homeLink: '[href=\"/\"]',\n    productsLink: '[href=\"/products\"]',\n  };\n\n  async waitToLoad(): Promise<void> {\n    this.I.waitForElement(this.root, 10);\n  }\n\n  async goHome(): Promise<void> {\n    this.I.click(this.selectors.homeLink);\n  }\n\n  async goToProducts(): Promise<void> {\n    this.I.click(this.selectors.productsLink);\n  }\n}\n\nexport = ShopHeaderFragment;\n"},{"name":"ShopMain","fragmentTs":"import { BaseFragment } from '../base/BaseFragment';\n\nclass ShopMainFragment extends BaseFragment {\n  constructor() {\n    super('main');\n  }\n\n  selectors = {\n    heroCtaButton: '[data-testid=\"hero-cta\"]',\n  };\n\n  async waitToLoad(): Promise<void> {\n    this.I.waitForElement(this.selectors.heroCtaButton, 10);\n  }\n\n  async clickShopNow(): Promise<void> {\n    this.I.click(this.selectors.heroCtaButton);\n  }\n}\n\nexport = ShopMainFragment;\n"},{"name":"ShopFooter","fragmentTs":"import { BaseFragment } from '../base/BaseFragment';\n\nclass ShopFooterFragment extends BaseFragment {\n  constructor() {\n    super('footer');\n  }\n\n  selectors = {\n    copyright: 'footer p',\n  };\n\n  async waitToLoad(): Promise<void> {\n    this.I.waitForElement(this.root, 5);\n  }\n}\n\nexport = ShopFooterFragment;\n"}],"pageTs":"import ShopFooterFragment = require('../fragments/features/ShopFooterFragment');\nimport ShopHeaderFragment = require('../fragments/features/ShopHeaderFragment');\nimport ShopMainFragment = require('../fragments/features/ShopMainFragment');\n\nimport { BasePage } from './base/BasePage';\n\nexport class ShopPage extends BasePage {\n  path = '/shop';\n  header = new ShopHeaderFragment();\n  main = new ShopMainFragment();\n  footer = new ShopFooterFragment();\n\n  async waitForLoad(): Promise<void> {\n    await this.main.waitToLoad();\n  }\n}\n","stepsTs":"import { ShopPage } from '../pages/ShopPage';\n\nclass ShopSteps {\n  private readonly page = new ShopPage();\n\n  protected get I(): CodeceptJS.I {\n    return inject().I;\n  }\n\n  async navigateToHome(): Promise<void> {\n    await this.page.open();\n  }\n\n  async goToProducts(): Promise<void> {\n    await this.page.open();\n    this.I.click(this.page.header.selectors.productsLink);\n  }\n\n  async startShopping(): Promise<void> {\n    await this.page.open();\n    this.I.click(this.page.main.selectors.heroCtaButton);\n  }\n}\n\nexport = new ShopSteps();\n","testTs":"Feature('Shop').tag('@ui').tag('@smoke');\n\nScenario('User can navigate to products @smoke', async ({ shopSteps, I }) => {\n  await shopSteps.goToProducts();\n  I.seeInCurrentUrl('/products');\n});\n\nScenario('Hero CTA starts shopping flow @smoke', async ({ shopSteps, I }) => {\n  await shopSteps.startShopping();\n  I.seeInCurrentUrl('/shop');\n});\n"}
 ---
-You are a TypeScript + CodeceptJS test-automation expert generating three files for this framework.
+You are a TypeScript + CodeceptJS test-automation expert. You generate code following a strict **Hybrid Pattern**: Fragments (UI) → Page Objects (compose + navigate) → Step Objects (business workflows) → Tests (only use step objects).
 
-## Framework conventions (STRICT — do not deviate)
+## Architecture layers (top-down)
 
-**Fragment** (`{{{fragmentName}}}Fragment`):
+```
+Tests  ──uses──►  Step Objects  ──orchestrate──►  Page Objects  ──compose──►  Fragments
+```
+
+- **Fragment**: encapsulates locators + atomic UI interactions for one UI region.
+- **Page Object**: composes fragments, owns the route, handles navigation.
+- **Step Object**: business workflow — sequences page/fragment actions into meaningful user journeys. Tests inject and call this layer ONLY.
+- **Test**: zero knowledge of pages or fragments. Uses the step object via CodeceptJS injection.
+
+---
+
+## Fragment conventions
+
 - Import: `import { BaseFragment } from '../base/BaseFragment';`
-- Class: `class {{{fragmentName}}}Fragment extends BaseFragment`
-- Constructor: `constructor() { super('root-css-selector'); }`
-- Locators: stored as strings in a `selectors = { key: 'css-selector' }` object — NO Playwright Locator objects
-- Interactions: use `this.I.click()`, `this.I.fillField()`, `this.I.waitForElement()` — NOT `await element.click()`
-- Scoping: use `this.within(() => { ... })` to scope actions inside the root selector
-- Must implement `async waitToLoad(): Promise<void>` (abstract in BaseFragment)
-- Export: `export = {{{fragmentName}}}Fragment;` (CommonJS style — required)
+- Class: `class {Name}Fragment extends BaseFragment` (NOT exported inline)
+- Constructor: `constructor() { super('root-css-selector'); }` — use `rootSelector` from segments
+- ALL locators stored as strings in `selectors = { key: 'selector' }` — NO Playwright Locator objects
+- Interactions: `this.I.click()`, `this.I.fillField()`, `this.I.waitForElement()` only
+- Scope actions inside root: `this.within(() => { ... })`
+- Must implement `async waitToLoad(): Promise<void>` (abstract)
+- Export: `export = {Name}Fragment;` (CommonJS — required)
+- Prefer stable selectors: `data-testid` > `aria-label`/`id` > stable class > text. Avoid `⚠unstable`.
 
-**Page** (`{{{fragmentName}}}Page`):
-- Imports: `import {{{fragmentName}}}Fragment = require('../fragments/features/{{{fragmentName}}}Fragment');` then `import { BasePage } from './base/BasePage';`
-- Class: `export class {{{fragmentName}}}Page extends BasePage`
+## Page Object conventions
+
+- Imports: one `import {Name}Fragment = require(...)` per fragment, then `import { BasePage } from './base/BasePage';`
+- Class: `export class {fragmentName}Page extends BasePage`
 - Must set `path = '/route';`
-- Must implement `async waitForLoad(): Promise<void>`
-- To navigate: call `await this.open()` (inherited — uses `this.I.amOnPage(this.path)`)
-- Interactions on `this.I`: use `this.I.click(selector)` — NOT `await this.page.goto()`
+- Expose each fragment as a named property (`header`, `main`, `footer`, etc.)
+- Must implement `async waitForLoad(): Promise<void>` — delegate to the primary fragment
+- **No business logic** — pages do NOT navigate between flows or orchestrate multi-step workflows
+- Inherited `open()` handles navigation — do NOT override it
 
-**Test file**:
-- Import page: `import { {{{fragmentName}}}Page } from '@ui/pages/{{{fragmentName}}}Page';`
-- NO `import { I } from 'codeceptjs'` — `I` is injected via `async ({ I }) => {}`
-- Instantiate once: `const page = new {{{fragmentName}}}Page();`
-- Navigate with: `await page.open();`
-- Access selectors: `page.fragmentProperty.selectors.key`
-- Use standard CodeceptJS steps: `I.seeElement()`, `I.click()`, `I.seeInCurrentUrl()`, `I.see()`
+## Step Object conventions
 
-## Rules
-- Use the pre-scored locator candidates from `elements` — prefer the highest-ranked selector for each element.
-- Store ALL selectors as strings in the `selectors` object — never inline them in methods.
-- Output **valid TypeScript only** — no `any`, no `TODO`.
-- Return a JSON object exactly matching: `{ "fragmentTs": string, "pageTs": string, "testTs": string }`. No markdown, no commentary outside the JSON.
+- File: `{fragmentName}Steps.ts` in `src/ui/steps/`
+- Import: `import { {fragmentName}Page } from '../pages/{fragmentName}Page';`
+- Class: `class {fragmentName}Steps`  (NOT exported inline)
+- Private property: `private readonly page = new {fragmentName}Page();`
+- Access `I` via: `protected get I(): CodeceptJS.I { return inject().I; }`
+- Methods represent **user journeys**: `navigateTo()`, `submitForm()`, `selectItem()`, etc.
+- Each method calls `await this.page.open()` if navigation is needed, then delegates to fragment methods or `this.I.*`
+- Export singleton: `export = new {fragmentName}Steps();`
+
+## Test conventions
+
+- **NO imports** — all objects are injected by CodeceptJS
+- Scenario signature: `async ({ {fragmentName}Steps, I }) => {}`  (camelCase step object name)
+- Call step object methods only — NO direct page or fragment access
+- Assertions use `I.*`: `I.seeElement()`, `I.seeInCurrentUrl()`, `I.see()`, `I.dontSee()`
+- At least 2 scenarios: one happy path `@smoke`, one secondary or negative flow
+- **NEVER** access `.page`, `.main`, `.header`, or any fragment/selector through a step object in a test.
+  If you need to assert a UI state, add a dedicated verification method to the Step Object and call that instead.
+  ❌ `I.seeElement(shopSteps.page.main.selectors.heroCtaButton);`
+  ✅ `await shopSteps.verifyHeroCtaVisible();` (add this method to the Step Object)
+
+---
+
+## Segmentation rules
+
+- Generate **one Fragment per detected segment** using its `rootSelector` as the constructor argument.
+- Name pattern: `{fragmentName}{segmentName}Fragment` (e.g. `LandingHeaderFragment`).
+- If `hasSegments` is false, generate a single Fragment `{fragmentName}Fragment` with `super('body')`.
+- The Page Object composes all Fragments. The Step Object orchestrates the Page.
+
+---
+
+## Output format
+
+Return **only** a JSON object matching exactly:
+```json
+{
+  "fragments": [ { "name": string, "fragmentTs": string }, ... ],
+  "pageTs": string,
+  "stepsTs": string,
+  "testTs": string
+}
+```
+No markdown fences, no commentary. Valid TypeScript only — no `any`, no `TODO`.
 
 ## USER
 Fragment name: {{{fragmentName}}}
 
-DOM skeleton (sanitized):
+Detected segments:
+```json
+{{{segments}}}
+```
+
+DOM skeleton (sanitized, class hashes stripped for readability):
 ```html
 {{{dom}}}
 ```
 
-Pre-scored locator candidates per element:
+Pre-scored locator candidates (prefer selectors listed first; avoid `⚠unstable`):
 ```json
 {{{elements}}}
 ```

@@ -1,20 +1,16 @@
-import LandingFragment = require('../fragments/features/LandingFragment');
+import LandingFooterFragment = require('../fragments/features/LandingFooterFragment');
+import LandingHeaderFragment = require('../fragments/features/LandingHeaderFragment');
+import LandingYourUltimateFragment = require('../fragments/features/LandingYourUltimateFragment');
 
 import { BasePage } from './base/BasePage';
 
 export class LandingPage extends BasePage {
-  path = '';
-  landing = new LandingFragment();
+  path = '/';
+  header = new LandingHeaderFragment();
+  main = new LandingYourUltimateFragment();
+  footer = new LandingFooterFragment();
 
   async waitForLoad(): Promise<void> {
-    await this.landing.waitToLoad();
-  }
-
-  async createGiftList(): Promise<void> {
-    this.I.click(this.landing.selectors.heroCreateListButton);
-  }
-
-  async findGiftList(): Promise<void> {
-    this.I.click(this.landing.selectors.heroFindListButton);
+    await this.main.waitToLoad();
   }
 }

@@ -8,6 +8,8 @@ export interface ProfileSpec {
   maxTokens: number;
   /** Whether the system prompt should be marked for prompt caching. */
   cacheSystem?: boolean;
+  /** Hard timeout per LLM call in ms (default: 30 000). Codegen needs more for large pages. */
+  timeoutMs?: number;
 }
 
 /**
@@ -25,11 +27,13 @@ export const profiles: Record<TaskProfile, ProfileSpec> = {
     maxTokens: 256,
   },
   codegen: {
-    primary: 'anthropic:sonnet',
-    fallback: ['anthropic:haiku', 'cohere'],
+    // Cohere promoted to primary — swap back to 'anthropic:sonnet' when ANTHROPIC_API_KEY is set.
+    primary: 'cohere',
+    fallback: ['anthropic:sonnet', 'anthropic:haiku'],
     temperature: 0.2,
-    maxTokens: 4096,
+    maxTokens: 8192,
     cacheSystem: true,
+    timeoutMs: 120_000,
   },
   'data-gen': {
     primary: 'cohere',

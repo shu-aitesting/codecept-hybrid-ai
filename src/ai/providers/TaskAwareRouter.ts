@@ -45,7 +45,10 @@ export class TaskAwareRouter {
   private readonly budgetGuard: BudgetGuard;
   private readonly rateLimit: RateLimitTracker;
 
-  constructor(public readonly task: TaskProfile, deps: RouterDeps = {}) {
+  constructor(
+    public readonly task: TaskProfile,
+    deps: RouterDeps = {},
+  ) {
     this.profile = profiles[task];
     if (!this.profile) {
       throw new Error(`Unknown task profile: ${task}`);
@@ -75,6 +78,7 @@ export class TaskAwareRouter {
     const callOpts: ChatOptions = {
       temperature: this.profile.temperature,
       maxTokens: this.profile.maxTokens,
+      timeoutMs: this.profile.timeoutMs,
       ...opts,
     };
 
@@ -82,11 +86,17 @@ export class TaskAwareRouter {
     for (const link of this.chain) {
       if (!link.provider.isConfigured()) continue;
       if (!link.breaker.allow()) {
-        errors.push({ id: link.id, err: new ProviderError(`circuit open for ${link.id}`, 'transient') });
+        errors.push({
+          id: link.id,
+          err: new ProviderError(`circuit open for ${link.id}`, 'transient'),
+        });
         continue;
       }
       if (!this.rateLimit.canCall(link.provider.name)) {
-        errors.push({ id: link.id, err: new ProviderError(`rate-limited: ${link.id}`, 'rate_limit') });
+        errors.push({
+          id: link.id,
+          err: new ProviderError(`rate-limited: ${link.id}`, 'rate_limit'),
+        });
         continue;
       }
       // Budget check: assume worst case = full maxTokens to be conservative.
