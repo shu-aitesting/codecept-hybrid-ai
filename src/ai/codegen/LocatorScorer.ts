@@ -7,6 +7,9 @@ export interface Candidate {
   score: number;
   reason: string;
   nodePath: string;
+  /** False when the selector depends on hashed CSS-Module class names that
+   *  will break after any CSS rebuild (e.g. `cta_root__CXED3`). */
+  stable: boolean;
 }
 
 export interface ScorerOptions {
@@ -15,6 +18,8 @@ export interface ScorerOptions {
   /** Maximum number of candidates to return. Defaults to 5. */
   topN?: number;
 }
+
+// ─── helpers ────────────────────────────────────────────────────────────────
 
 function esc(val: string) {
   return val.replace(/"/g, '\\"');
@@ -30,6 +35,11 @@ function cssEscapeClass(cls: string) {
 
 function xpathEscape(s: string) {
   return s.replace(/"/g, '\\"');
+}
+
+/** CSS Modules hash suffix pattern: `word__XXXX` (4+ alphanumeric after `__`). */
+function isHashedCssModuleClass(cls: string): boolean {
+  return /__[A-Za-z0-9]{4,}$/.test(cls);
 }
 
 function dedupeBySelector(arr: Candidate[]): Candidate[] {
@@ -53,21 +63,89 @@ function getNodePath(el: Element, $: cheerio.CheerioAPI): string {
     parts.unshift(`${tag}${id}`);
     cur = cur.parent as unknown;
   }
-  void $; // cheerio passed for signature parity with callers
+  void $;
   return parts.join(' > ');
 }
 
-function scoreElement(
+// ─── core scorer ────────────────────────────────────────────────────────────
+
+type TryAdd = (sel: string, reason: string, base: number, stable: boolean) => void;
+
+function addDataAttrs(attrs: Record<string, string>, tryAdd: TryAdd): void {
+  for (const key of Object.keys(attrs)) {
+    if (/^data-(test|qa|testid)/i.test(key)) {
+      tryAdd(`[${key}="${esc(attrs[key])}"]`, `data attribute ${key}`, 80, true);
+    }
+  }
+}
+
+function addSemanticAttrs(attrs: Record<string, string>, tryAdd: TryAdd): void {
+  const semanticAttrs = ['aria-label', 'role', 'placeholder', 'alt', 'type', 'title'] as const;
+  for (const sa of semanticAttrs) {
+    if (attrs[sa]) tryAdd(`[${sa}="${esc(attrs[sa])}"]`, sa, 50, true);
+  }
+}
+
+function addClassCandidates(tag: string, attrs: Record<string, string>, tryAdd: TryAdd): void {
+  if (!attrs.class) return;
+  const allClasses = attrs.class.split(/\s+/).filter(Boolean);
+  const stableClasses = allClasses.filter((c) => !isHashedCssModuleClass(c));
+  const hashedClasses = allClasses.filter((c) => isHashedCssModuleClass(c));
+  if (stableClasses.length) {
+    const sel = stableClasses
+      .slice(0, 2)
+      .map((c) => `.${cssEscapeClass(c)}`)
+      .join('');
+    tryAdd(`${tag}${sel}`, 'stable class chain', 35, true);
+  } else if (hashedClasses.length) {
+    const sel = hashedClasses
+      .slice(0, 2)
+      .map((c) => `.${cssEscapeClass(c)}`)
+      .join('');
+    tryAdd(`${tag}${sel}`, 'hashed CSS-module class (unstable)', 10, false);
+  }
+}
+
+function addTextXPath(
+  $: cheerio.CheerioAPI,
+  $el: cheerio.Cheerio<Element>,
+  tag: string,
+  nodePath: string,
+  candidates: Candidate[],
+): void {
+  const text = $el.text().trim();
+  if (!text || text.length > 80) return;
+  const textXPath = `.//${tag}[normalize-space(text())="${xpathEscape(text)}"]`;
+  const count = $(tag).filter((_, e) => $(e).text().trim() === text).length;
+  const uniqueBoost = count === 1 ? 50 : Math.max(5 - Math.min(count, 5), 0);
+  candidates.push({
+    type: 'xpath',
+    selector: textXPath,
+    score: 60 + uniqueBoost,
+    reason: `text() exact (XPath, matches: ${count})`,
+    nodePath,
+    stable: true,
+  });
+}
+
+/**
+ * Score a single element against the full-page `$` (for accurate uniqueness
+ * counts). Returns candidates sorted best-first.
+ */
+export function scoreElementInContext(
   $: cheerio.CheerioAPI,
   el: Element,
+  opts: ScorerOptions = {},
 ): Candidate[] {
+  const topN = opts.topN ?? 5;
+  const type = opts.type ?? 'css';
   const $el = $(el);
   const tag = (el.tagName?.toLowerCase() as string | undefined) ?? '*';
   const attrs = (el.attribs ?? {}) as Record<string, string>;
   const nodePath = getNodePath(el, $);
   const candidates: Candidate[] = [];
 
-  const tryAdd = (sel: string, reason: string, base = 0) => {
+  const tryAdd: TryAdd = (sel, reason, base, stable) => {
     if (!sel) return;
     const count = $(sel).length;
     const uniqueBoost = count === 1 ? 40 : Math.max(5 - Math.min(count, 5), 0);
@@ -77,79 +155,37 @@ function scoreElement(
       score: base + uniqueBoost,
       reason: `${reason} (matches: ${count})`,
       nodePath,
+      stable,
     });
   };
 
-  // data-testid / data-test / data-qa
-  for (const key of Object.keys(attrs)) {
-    if (/^data-(test|qa|testid)/i.test(key)) {
-      tryAdd(`[${key}="${esc(attrs[key])}"]`, `data attribute ${key}`, 80);
-    }
-  }
+  addDataAttrs(attrs, tryAdd);
+  if (attrs.id) tryAdd(`#${cssEscapeId(attrs.id)}`, 'id', 75, true);
+  if (attrs.name) tryAdd(`[name="${esc(attrs.name)}"]`, 'name', 60, true);
+  addSemanticAttrs(attrs, tryAdd);
+  addClassCandidates(tag, attrs, tryAdd);
+  addTextXPath($, $el, tag, nodePath, candidates);
 
-  // id
-  if (attrs.id) tryAdd(`#${cssEscapeId(attrs.id)}`, 'id', 75);
-
-  // name
-  if (attrs.name) tryAdd(`[name="${esc(attrs.name)}"]`, 'name', 60);
-
-  // semantic attrs: aria-label, role, placeholder, alt, type, title
-  const semanticAttrs = ['aria-label', 'role', 'placeholder', 'alt', 'type', 'title'] as const;
-  for (const sa of semanticAttrs) {
-    if (attrs[sa]) tryAdd(`[${sa}="${esc(attrs[sa])}"]`, sa, 50);
-  }
-
-  // class chain (first 2 classes)
-  if (attrs.class) {
-    const classes = attrs.class.split(/\s+/).filter(Boolean).slice(0, 2);
-    if (classes.length) {
-      const classSel = classes.map((c) => `.${cssEscapeClass(c)}`).join('');
-      tryAdd(`${tag}${classSel}`, 'class chain', 35);
-    }
-  }
-
-  // text content (XPath)
-  const text = $el.text().trim();
-  if (text && text.length <= 80) {
-    const textXPath = `.//${tag}[normalize-space(text())="${xpathEscape(text)}"]`;
-    const count = $(tag).filter((_, e) => $(e).text().trim() === text).length;
-    const uniqueBoost = count === 1 ? 50 : Math.max(5 - Math.min(count, 5), 0);
-    candidates.push({
-      type: 'xpath',
-      selector: textXPath,
-      score: 60 + uniqueBoost,
-      reason: `text() exact (XPath, matches: ${count})`,
-      nodePath,
-    });
-  }
-
-  return dedupeBySelector(candidates).sort((a, b) => b.score - a.score);
+  const deduped = dedupeBySelector(candidates).filter((c) => type !== 'css' || c.type === 'css');
+  return [...deduped].sort((a: Candidate, b: Candidate) => b.score - a.score).slice(0, topN);
 }
+
+// ─── public API ─────────────────────────────────────────────────────────────
 
 /**
  * Score all interactable elements in `html` and return the top-N candidates
- * sorted by confidence. Deterministic scoring (no LLM): data-testid +80,
- * id +75, name +60, aria/semantic +50, class chain +35, text +60, uniqueness
- * boost up to +50.
+ * sorted by confidence. Scoring: data-testid +80, id +75, name +60,
+ * aria/semantic +50, stable class +35, hashed class +10, uniqueness up to +50.
  */
 export function scoreElements(html: string, opts: ScorerOptions = {}): Candidate[] {
-  const type = opts.type ?? 'css';
-  const topN = opts.topN ?? 5;
-
-  if (!html || !html.trim()) return [];
-
+  if (!html?.trim()) return [];
   const $ = cheerio.load(html);
   const all: Candidate[] = [];
-
   $('*').each((_, el) => {
-    all.push(...scoreElement($, el as Element));
+    all.push(...scoreElementInContext($, el as Element, opts));
   });
-
-  const filtered = all
-    .filter((c) => c.type === type)
-    .sort((a, b) => b.score - a.score);
-
-  return dedupeBySelector(filtered).slice(0, topN);
+  const sorted = [...all].sort((a: Candidate, b: Candidate) => b.score - a.score);
+  return dedupeBySelector(sorted).slice(0, opts.topN ?? 5);
 }
 
 /**

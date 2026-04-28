@@ -20,7 +20,7 @@ export class GenerationFailedError extends Error {
   }
 }
 
-export interface PipelineConfig<TIn, TOut extends Record<string, string>> {
+export interface PipelineConfig<TIn, TOut extends object> {
   agentName: string;
   /** Name of the prompt template (without .prompt.md extension). */
   promptTemplate: string;
@@ -33,7 +33,7 @@ export interface PipelineConfig<TIn, TOut extends Record<string, string>> {
    * Map generated files to disk paths. When provided and `dryRun` is false,
    * the pipeline writes files before returning.
    */
-  outputMapper?: (input: TIn, files: TOut) => Record<string, string>;
+  outputMapper?: (input: TIn, files: TOut) => object;
   /**
    * Validate generated code (e.g. tsc). Returns an array of error strings.
    * Empty array → success. On failure the pipeline appends errors to the
@@ -61,7 +61,7 @@ interface PipelineDeps {
  * Flow: cache lookup → context build → LLM call → parse JSON → post-validate
  * (e.g. tsc) → retry-with-errors if validation fails → write files → cache.
  */
-export class GenerationPipeline<TIn, TOut extends Record<string, string>> {
+export class GenerationPipeline<TIn, TOut extends object> {
   private readonly config: PipelineConfig<TIn, TOut>;
   private readonly router: TaskAwareRouter;
   private readonly cache: GenerationCache;
@@ -82,7 +82,11 @@ export class GenerationPipeline<TIn, TOut extends Record<string, string>> {
     // Cache lookup — skip on first call if skipCache
     if (!opts.skipCache) {
       const cached = this.cache.lookup(this.config.agentName, hash);
-      if (cached) return cached as TOut;
+      if (cached) {
+        const validation = this.config.outputSchema.safeParse(cached);
+        if (validation.success) return validation.data;
+        // Stale cache entry (schema changed) — fall through to regenerate
+      }
     }
 
     // Build Mustache context from input
@@ -114,7 +118,11 @@ export class GenerationPipeline<TIn, TOut extends Record<string, string>> {
               content: `JSON validation failed: ${errMsg}. Return corrected JSON only, no markdown.`,
             },
           ];
-          const fix = await this.router.chat(fixMessages, { temperature: 0 }, { agentName: this.config.agentName });
+          const fix = await this.router.chat(
+            fixMessages,
+            { temperature: 0 },
+            { agentName: this.config.agentName },
+          );
           return fix.text;
         },
         maxFixRetries: 1,

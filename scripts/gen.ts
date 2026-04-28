@@ -11,6 +11,89 @@ import { CurlToApiAgent } from '../src/ai/codegen/CurlToApiAgent';
 import { HtmlToFragmentAgent } from '../src/ai/codegen/HtmlToFragmentAgent';
 import { ScenarioGeneratorAgent } from '../src/ai/codegen/ScenarioGeneratorAgent';
 
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+/** Insert `line` after the last regex match in `text`. Returns updated text or null if no match. */
+function insertAfterLast(text: string, pattern: RegExp, line: string): string | null {
+  const last = [...text.matchAll(pattern)].at(-1);
+  if (last?.index === undefined) return null;
+  const at = last.index + last[0].length;
+  return `${text.slice(0, at)}\n${line}${text.slice(at)}`;
+}
+
+function updateStepsDts(dtsPath: string, key: string, relImport: string): boolean {
+  let dts = fs.readFileSync(dtsPath, 'utf8');
+  let changed = false;
+
+  if (!dts.includes(`type ${key} =`)) {
+    const updated = insertAfterLast(
+      dts,
+      /^type \w+Steps = .+;$/gm,
+      `type ${key} = typeof import('${relImport}');`,
+    );
+    if (updated) {
+      dts = updated;
+      changed = true;
+    }
+  }
+  if (!dts.includes(`${key}:`)) {
+    const updated = insertAfterLast(dts, /^ {4}\w+Steps: \w+Steps;$/gm, `    ${key}: ${key};`);
+    if (updated) {
+      dts = updated;
+      changed = true;
+    }
+  }
+
+  if (changed) fs.writeFileSync(dtsPath, dts, 'utf8');
+  return changed;
+}
+
+function updateCodeceptConf(confPath: string, key: string, relFile: string): boolean {
+  const conf = fs.readFileSync(confPath, 'utf8');
+  if (conf.includes(`${key}:`)) return false;
+
+  const updated = insertAfterLast(
+    conf,
+    /^ {4}\w+Steps: '\.\/src\/ui\/steps\/.+',$/gm,
+    `    ${key}: '${relFile}',`,
+  );
+  if (!updated) return false;
+
+  fs.writeFileSync(confPath, updated, 'utf8');
+  return true;
+}
+
+/**
+ * After generating a Steps file, automatically register it in:
+ *   - steps.d.ts       (type alias + SupportObject property)
+ *   - codecept.conf.ts (include section)
+ *
+ * Both edits are idempotent — safe to run multiple times for the same name.
+ * Returns the list of files that were actually modified.
+ */
+function registerStepObject(fragmentName: string, root: string): string[] {
+  const key = fragmentName.charAt(0).toLowerCase() + fragmentName.slice(1) + 'Steps';
+  const className = `${fragmentName}Steps`;
+  const modified: string[] = [];
+
+  const dtsPath = path.join(root, 'steps.d.ts');
+  if (fs.existsSync(dtsPath) && updateStepsDts(dtsPath, key, `./src/ui/steps/${className}`)) {
+    modified.push('steps.d.ts');
+  }
+
+  const confPath = path.join(root, 'codecept.conf.ts');
+  if (
+    fs.existsSync(confPath) &&
+    updateCodeceptConf(confPath, key, `./src/ui/steps/${className}.ts`)
+  ) {
+    modified.push('codecept.conf.ts');
+  }
+
+  return modified;
+}
+
+// ─── program ────────────────────────────────────────────────────────────────
+
 const program = new Command();
 program.name('gen').description('AI Code Generation CLI for codecept-hybrid').version('1.0.0');
 
@@ -40,7 +123,7 @@ program
       try {
         const res = await fetch(opts['url'] as string);
         html = await res.text();
-        spinner.succeed('Fetched');
+        spinner.succeed(`Fetched ${Math.round(html.length / 1024)} KB raw HTML`);
       } catch (err) {
         spinner.fail(`Fetch failed: ${(err as Error).message}`);
         process.exit(1);
@@ -53,10 +136,11 @@ program
     const spinner = ora('Generating Fragment + Page + Test…').start();
     try {
       const agent = new HtmlToFragmentAgent();
+      const fragmentName = opts['name'] as string;
       const result = await agent.run(
         {
           html,
-          fragmentName: opts['name'] as string,
+          fragmentName,
           outputDir: opts['outputDir'] as string,
         },
         {
@@ -65,16 +149,30 @@ program
           maxRetries: Number(opts['maxRetries'] ?? 2),
         },
       );
-      spinner.succeed('Generated');
+      spinner.succeed(`Generated ${result.fragments.length} fragment(s)`);
+
       if (opts['dryRun']) {
-        console.log('\n' + chalk.cyan('── fragmentTs ──'));
-        console.log(result.fragmentTs);
+        for (const frag of result.fragments) {
+          console.log('\n' + chalk.cyan(`── ${frag.name}Fragment.ts ──`));
+          console.log(frag.fragmentTs);
+        }
         console.log('\n' + chalk.cyan('── pageTs ──'));
         console.log(result.pageTs);
+        console.log('\n' + chalk.cyan('── stepsTs ──'));
+        console.log(result.stepsTs);
         console.log('\n' + chalk.cyan('── testTs ──'));
         console.log(result.testTs);
       } else {
-        console.log(chalk.green('Files written. Run `npm run typecheck` to verify.'));
+        const fragNames = result.fragments.map((f) => `${f.name}Fragment`).join(', ');
+        console.log(chalk.green(`Files written: ${fragNames}, Page, Test.`));
+
+        // Auto-register the new Steps file in codecept.conf.ts and steps.d.ts
+        const registered = registerStepObject(fragmentName, process.cwd());
+        if (registered.length > 0) {
+          console.log(chalk.green(`Registered ${fragmentName}Steps in: ${registered.join(', ')}`));
+        }
+
+        console.log(chalk.dim('Run `npm run typecheck` to verify.'));
       }
     } catch (err) {
       spinner.fail(`Generation failed: ${(err as Error).message}`);

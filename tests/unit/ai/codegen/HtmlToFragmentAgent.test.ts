@@ -6,8 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { GenerationCache } from '../../../../src/ai/codegen/GenerationCache';
-import { GenerationFailedError, GenerationPipeline } from '../../../../src/ai/codegen/GenerationPipeline';
-import { HtmlToFragmentAgent, HtmlToFragmentInput, HtmlToFragmentOutput } from '../../../../src/ai/codegen/HtmlToFragmentAgent';
+import {
+  GenerationFailedError,
+  GenerationPipeline,
+} from '../../../../src/ai/codegen/GenerationPipeline';
+import {
+  HtmlToFragmentAgent,
+  HtmlToFragmentInput,
+  HtmlToFragmentOutput,
+} from '../../../../src/ai/codegen/HtmlToFragmentAgent';
 import { PromptLibrary } from '../../../../src/ai/prompts/PromptLibrary';
 import { BudgetGuard } from '../../../../src/ai/providers/BudgetGuard';
 import { CircuitBreaker } from '../../../../src/ai/providers/CircuitBreaker';
@@ -18,21 +25,27 @@ import { StructuredOutputParser } from '../../../../src/ai/providers/StructuredO
 import { TaskAwareRouter } from '../../../../src/ai/providers/TaskAwareRouter';
 
 const VALID_OUTPUT = JSON.stringify({
-  fragmentTs: 'export class LoginFormFragment {}',
-  pageTs: 'export class LoginPage {}',
+  fragments: [
+    { name: 'LoginFormFragment', fragmentTs: 'class LoginFormFragment extends BaseFragment {}' },
+  ],
+  pageTs: 'export class LoginPage extends BasePage {}',
+  stepsTs: 'class LoginSteps {} export = new LoginSteps();',
   testTs: 'Scenario("login", () => {});',
 });
 
 const outputSchema = z.object({
-  fragmentTs: z.string().min(1),
+  fragments: z.array(z.object({ name: z.string().min(1), fragmentTs: z.string().min(1) })).min(1),
   pageTs: z.string().min(1),
+  stepsTs: z.string().min(1),
   testTs: z.string().min(1),
 });
 
 function makeRouter(mock: MockProvider) {
   const costMeter = new CostMeter({ filePath: path.join(os.tmpdir(), `cost-${Date.now()}.jsonl`) });
   const budgetGuard = new BudgetGuard({ costMeter, maxDailyUsd: 999 });
-  const rateLimit = new RateLimitTracker({ filePath: path.join(os.tmpdir(), `rl-${Date.now()}.json`) });
+  const rateLimit = new RateLimitTracker({
+    filePath: path.join(os.tmpdir(), `rl-${Date.now()}.json`),
+  });
   return new TaskAwareRouter('codegen', {
     providers: { 'anthropic:sonnet': mock },
     costMeter,
@@ -57,6 +70,8 @@ function makePipeline(
         fragmentName: i.fragmentName,
         dom: i.html,
         elements: '[]',
+        segments: '[]',
+        hasSegments: false,
       }),
       postValidate,
     },
@@ -85,7 +100,7 @@ afterEach(() => {
 describe('HtmlToFragmentAgent', () => {
   // ── Happy path ───────────────────────────────────────────────────────────
 
-  it('returns fragmentTs + pageTs + testTs from LLM response', async () => {
+  it('returns fragments[] + pageTs + testTs from LLM response', async () => {
     const mock = new MockProvider({ fallback: VALID_OUTPUT });
     const agent = new HtmlToFragmentAgent({ pipeline: makePipeline(mock, cache) });
 
@@ -95,7 +110,8 @@ describe('HtmlToFragmentAgent', () => {
       outputDir: path.join(os.tmpdir(), 'output'),
     });
 
-    expect(result.fragmentTs).toContain('LoginFormFragment');
+    expect(result.fragments).toHaveLength(1);
+    expect(result.fragments[0].fragmentTs).toContain('LoginFormFragment');
     expect(result.pageTs).toContain('LoginPage');
     expect(result.testTs).toBeTruthy();
   });
@@ -121,10 +137,21 @@ describe('HtmlToFragmentAgent', () => {
         promptTemplate: 'html-to-fragment',
         outputSchema,
         inputHasher: (i) => crypto.createHash('sha256').update(JSON.stringify(i)).digest('hex'),
-        contextBuilder: async (i) => ({ fragmentName: i.fragmentName, dom: i.html, elements: '[]' }),
+        contextBuilder: async (i) => ({
+          fragmentName: i.fragmentName,
+          dom: i.html,
+          elements: '[]',
+          segments: '[]',
+          hasSegments: false,
+        }),
         outputMapper: () => ({ [targetFile]: 'content' }),
       },
-      { router: makeRouter(mock), cache, prompts: new PromptLibrary(), parser: new StructuredOutputParser() },
+      {
+        router: makeRouter(mock),
+        cache,
+        prompts: new PromptLibrary(),
+        parser: new StructuredOutputParser(),
+      },
     );
 
     const agent = new HtmlToFragmentAgent({ pipeline });
@@ -142,8 +169,8 @@ describe('HtmlToFragmentAgent', () => {
     const agent = new HtmlToFragmentAgent({ pipeline: makePipeline(mock, cache) });
 
     const input = { html: '<form/>', fragmentName: 'SkipForm', outputDir: '/tmp' };
-    await agent.run(input, { skipCache: false });   // populates cache
-    await agent.run(input, { skipCache: true });    // bypasses cache
+    await agent.run(input, { skipCache: false }); // populates cache
+    await agent.run(input, { skipCache: true }); // bypasses cache
 
     expect(mock.calls).toHaveLength(2);
   });
@@ -177,7 +204,7 @@ describe('HtmlToFragmentAgent', () => {
       { skipCache: true },
     );
 
-    expect(result.fragmentTs).toBeTruthy();
+    expect(result.fragments[0].fragmentTs).toBeTruthy();
     expect(postValidate).toHaveBeenCalledTimes(2);
     expect(mock.calls.length).toBeGreaterThanOrEqual(2);
   });
@@ -190,7 +217,7 @@ describe('HtmlToFragmentAgent', () => {
       { html: '', fragmentName: 'EmptyForm', outputDir: '/tmp' },
       { skipCache: true },
     );
-    expect(result).toHaveProperty('fragmentTs');
+    expect(result).toHaveProperty('fragments');
   });
 
   it('GenerationFailedError exposes validationErrors array', async () => {
@@ -201,7 +228,10 @@ describe('HtmlToFragmentAgent', () => {
 
     let caught: unknown;
     try {
-      await agent.run({ html: '<form/>', fragmentName: 'ErrForm', outputDir: '/tmp' }, { maxRetries: 0, skipCache: true });
+      await agent.run(
+        { html: '<form/>', fragmentName: 'ErrForm', outputDir: '/tmp' },
+        { maxRetries: 0, skipCache: true },
+      );
     } catch (e) {
       caught = e;
     }
