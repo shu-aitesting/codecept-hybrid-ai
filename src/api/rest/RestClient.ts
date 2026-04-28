@@ -29,13 +29,14 @@ export class RestClient {
 
   async send<T = unknown>(req: RestRequest): Promise<RestResponse<T>> {
     if (!this.context) {
-      throw new Error('[RestClient] Not initialized — call init() before sending requests.');
+      await this.init();
     }
+    const ctx = this.context!;
 
     log(`→ ${req.method} ${req.buildUrl()}`);
     const start = Date.now();
 
-    const response = await this.context.fetch(req.buildUrl(), {
+    const response = await ctx.fetch(req.buildUrl(), {
       method: req.method,
       headers: req.headers,
       data: req.body as Record<string, unknown> | string | undefined,
