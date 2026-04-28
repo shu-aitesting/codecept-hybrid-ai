@@ -28,7 +28,10 @@ interface AgentDeps {
 }
 
 function inferEndpointDescription(method: RestMethod, url: string): string {
-  const segments = url.split('/').filter(Boolean).filter((s) => !s.startsWith('http'));
+  const segments = url
+    .split('/')
+    .filter(Boolean)
+    .filter((s) => !s.startsWith('http'));
   const resource = segments[segments.length - 1] ?? 'resource';
   const verbMap: Partial<Record<RestMethod, string>> = {
     [RestMethod.GET]: 'Retrieve',
@@ -47,10 +50,7 @@ function buildConfig(deps: AgentDeps): PipelineConfig<CurlToApiInput, CurlToApiO
     outputSchema,
 
     inputHasher: (input) =>
-      crypto
-        .createHash('sha256')
-        .update(`${input.serviceName}:${input.curl}`)
-        .digest('hex'),
+      crypto.createHash('sha256').update(`${input.serviceName}:${input.curl}`).digest('hex'),
 
     contextBuilder: async (input) => {
       const req = CurlConverter.fromCurl(input.curl);
@@ -66,7 +66,13 @@ function buildConfig(deps: AgentDeps): PipelineConfig<CurlToApiInput, CurlToApiO
 
     outputMapper: (input, files) => ({
       [path.join(input.outputDir, 'services', `${input.serviceName}Service.ts`)]: files.serviceTs,
-      [path.join(process.cwd(), 'tests', 'api', `${input.serviceName.toLowerCase()}-service.test.ts`)]: files.testTs,
+      [path.join(
+        process.cwd(),
+        'tests',
+        'api',
+        'smoke',
+        `${input.serviceName.toLowerCase()}.test.ts`,
+      )]: files.testTs,
     }),
 
     postValidate: deps.postValidate,
