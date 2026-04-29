@@ -5,16 +5,9 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import {
-  CurlToApiAgent,
-  CurlToApiInput,
-  CurlToApiOutput,
-} from '../../../../src/ai/codegen/CurlToApiAgent';
+import { CurlToApiAgent, CurlToApiInput, CurlToApiOutput } from '../../../../src/ai/codegen/CurlToApiAgent';
 import { GenerationCache } from '../../../../src/ai/codegen/GenerationCache';
-import {
-  GenerationFailedError,
-  GenerationPipeline,
-} from '../../../../src/ai/codegen/GenerationPipeline';
+import { GenerationFailedError, GenerationPipeline } from '../../../../src/ai/codegen/GenerationPipeline';
 import { PromptLibrary } from '../../../../src/ai/prompts/PromptLibrary';
 import { BudgetGuard } from '../../../../src/ai/providers/BudgetGuard';
 import { CircuitBreaker } from '../../../../src/ai/providers/CircuitBreaker';
@@ -25,25 +18,18 @@ import { StructuredOutputParser } from '../../../../src/ai/providers/StructuredO
 import { TaskAwareRouter } from '../../../../src/ai/providers/TaskAwareRouter';
 import { CurlConverter } from '../../../../src/api/rest/CurlConverter';
 
+
 const VALID_OUTPUT = JSON.stringify({
-  schemaTs:
-    "import { z } from 'zod';\nexport const UserResponseSchema = z.object({ id: z.number() });",
   serviceTs: 'export class UserService { async createUser() {} }',
   testTs: 'Scenario("creates user", () => {});',
 });
 
-const outputSchema = z.object({
-  schemaTs: z.string().min(1),
-  serviceTs: z.string().min(1),
-  testTs: z.string().min(1),
-});
+const outputSchema = z.object({ serviceTs: z.string().min(1), testTs: z.string().min(1) });
 
 function makeRouter(mock: MockProvider) {
   const costMeter = new CostMeter({ filePath: path.join(os.tmpdir(), `cost-${Date.now()}.jsonl`) });
   const budgetGuard = new BudgetGuard({ costMeter, maxDailyUsd: 999 });
-  const rateLimit = new RateLimitTracker({
-    filePath: path.join(os.tmpdir(), `rl-${Date.now()}.json`),
-  });
+  const rateLimit = new RateLimitTracker({ filePath: path.join(os.tmpdir(), `rl-${Date.now()}.json`) });
   return new TaskAwareRouter('codegen', {
     providers: { 'anthropic:sonnet': mock },
     costMeter,
@@ -62,8 +48,7 @@ function makePipeline(
       agentName: 'curl-to-api',
       promptTemplate: 'curl-to-api',
       outputSchema,
-      inputHasher: (i) =>
-        crypto.createHash('sha256').update(`${i.serviceName}:${i.curl}`).digest('hex'),
+      inputHasher: (i) => crypto.createHash('sha256').update(`${i.serviceName}:${i.curl}`).digest('hex'),
       contextBuilder: async (i) => {
         const req = CurlConverter.fromCurl(i.curl);
         return {
@@ -101,16 +86,15 @@ afterEach(() => {
 
 describe('CurlToApiAgent', () => {
   const SAMPLE_CURL =
-    'curl -X POST https://api.example.com/users -H \'Content-Type: application/json\' -d \'{"name":"Alice"}\'';
+    "curl -X POST https://api.example.com/users -H 'Content-Type: application/json' -d '{\"name\":\"Alice\"}'";
 
   // ── Happy path ────────────────────────────────────────────────────────────
 
-  it('returns schemaTs + serviceTs + testTs from LLM response', async () => {
+  it('returns serviceTs + testTs from LLM response', async () => {
     const mock = new MockProvider({ fallback: VALID_OUTPUT });
     const agent = new CurlToApiAgent({ pipeline: makePipeline(mock, cache) });
 
     const result = await agent.run({ curl: SAMPLE_CURL, serviceName: 'User', outputDir: '/tmp' });
-    expect(result.schemaTs).toContain('zod');
     expect(result.serviceTs).toContain('UserService');
     expect(result.testTs).toContain('Scenario');
   });
@@ -154,10 +138,7 @@ describe('CurlToApiAgent', () => {
     const agent = new CurlToApiAgent({ pipeline: makePipeline(mock, cache) });
 
     await expect(
-      agent.run(
-        { curl: 'curl http://x.com', serviceName: 'Empty', outputDir: '/tmp' },
-        { skipCache: true },
-      ),
+      agent.run({ curl: 'curl http://x.com', serviceName: 'Empty', outputDir: '/tmp' }, { skipCache: true }),
     ).resolves.toHaveProperty('serviceTs');
   });
 
@@ -215,17 +196,11 @@ describe('CurlToApiAgent', () => {
         agentName: 'curl-to-api',
         promptTemplate: 'curl-to-api',
         outputSchema,
-        inputHasher: (i) => crypto.createHash('sha256').update(JSON.stringify(i)).digest('hex'),
+        inputHasher: (i) =>
+          crypto.createHash('sha256').update(JSON.stringify(i)).digest('hex'),
         contextBuilder: async (i) => {
           const req = CurlConverter.fromCurl(i.curl);
-          return {
-            serviceName: i.serviceName,
-            method: req.method,
-            url: req.url,
-            headers: '{}',
-            body: '{}',
-            endpointDescription: 'x',
-          };
+          return { serviceName: i.serviceName, method: req.method, url: req.url, headers: '{}', body: '{}', endpointDescription: 'x' };
         },
         outputMapper: () => ({ [targetFile]: 'content' }),
       },

@@ -14,7 +14,7 @@ import { globalTeardown } from './src/hooks/globalTeardown';
  */
 let healEngineInstance: SelfHealEngine | null = null;
 const getHealEngine = (): SelfHealEngine => {
-  healEngineInstance ??= new SelfHealEngine();
+  if (!healEngineInstance) healEngineInstance = new SelfHealEngine();
   return healEngineInstance;
 };
 
@@ -55,20 +55,6 @@ export const config: CodeceptJS.MainConfig = {
       require: '@codeceptjs/expect-helper',
     },
     FileSystem: {},
-    ApiDataFactory: {
-      endpoint: appConfig.apiUrl,
-      cleanup: true,
-      factories: {
-        user: {
-          uri: 'users',
-          factory: './src/fixtures/factories/UserApiFactory.ts',
-        },
-        post: {
-          uri: 'posts',
-          factory: './src/fixtures/factories/PostApiFactory.ts',
-        },
-      },
-    },
   },
   include: {
     I: './steps_file.ts',

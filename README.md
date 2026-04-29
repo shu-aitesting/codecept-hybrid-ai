@@ -21,7 +21,7 @@ cp .env.example .env.dev
 # 3. Verify setup (không cần app chạy)
 npm run typecheck   # TypeScript compile OK
 npm run lint        # ESLint pass
-npm run test:unit   # 100+ unit tests (không cần browser, không cần server)
+npm run test:unit   # 23 unit tests (không cần browser, không cần server)
 
 # 4. Chạy E2E test (cần app đang chạy tại BASE_URL)
 ENV=dev npm test
@@ -57,49 +57,35 @@ ENV=dev npm test
 codecept-hybrid/
 ├── config/
 │   ├── codecept.ci.conf.ts     # CI override (headless, no pauseOnFail)
-│   ├── ai/providers.profiles.ts # Task→provider/model mapping
-│   └── ai/prompts/             # Mustache prompt templates (*.prompt.md)
+│   └── ai/providers.profiles.ts # Task→provider/model mapping
 ├── src/
 │   ├── core/                   # Logger, ConfigLoader, utils, RestHelper
-│   ├── api/
-│   │   ├── rest/               # RestClient, RestRequestBuilder, RestResponse, CurlConverter
-│   │   ├── services/           # Hand-written service classes
-│   │   │   └── _generated/     # AUTO-GENERATED service classes từ OpenAPI (git-ignored or reviewed)
-│   │   └── schemas/            # Zod schemas: user.schema.ts, post.schema.ts, common.schema.ts
-│   │       └── _generated.ts   # AUTO-GENERATED từ OpenAPI spec (npm run schemas:gen)
+│   ├── api/rest/               # RestClient, RestRequestBuilder, CurlConverter
 │   ├── ui/
 │   │   ├── fragments/          # Reusable UI components (root locator + within)
 │   │   ├── pages/              # Compose nhiều fragments, sở hữu 1 screen
-│   │   └── steps/              # Business workflows (loginAs, logout, ...)
+│   │   └── steps/             # Business workflows (loginAs, logout, ...)
 │   ├── visual/                 # VisualComparator (pixelmatch wrapper)
 │   └── ai/
 │       ├── providers/          # LLM gateway: providers, circuit breaker, budget
 │       ├── heal/               # SelfHealEngine, LocatorRepository, HealTelemetry
-│       ├── codegen/            # GenerationPipeline, HtmlToFragmentAgent, CurlToApiAgent
-│       │   └── openapi/        # OperationParser, ServiceTemplate (OpenAPI → service)
+│       ├── codegen/            # GenerationPipeline, HtmlToFragmentAgent, ...
 │       ├── prompts/            # PromptLibrary (Mustache + YAML front-matter)
 │       └── utils/              # DomSanitizer
 ├── tests/
 │   ├── ui/smoke/               # @smoke @ui — login, basic flows
 │   ├── api/smoke/              # @smoke @api — health checks
-│   ├── api/regression/         # @api — CRUD scenarios (với schema validation)
-│   ├── api/_generated/         # AUTO-GENERATED test suites từ OpenAPI (npm run gen:suite)
+│   ├── api/regression/         # @api — CRUD scenarios
 │   ├── visual/                 # @visual — screenshot comparison
-│   └── unit/                   # Vitest unit tests (100+ tests, zero browser)
-│       ├── ai/                 # AI module tests (codegen, heal, providers)
-│       ├── api/rest/           # RestResponse, CurlConverter tests
-│       └── scripts/            # gen-schemas-from-openapi tests
+│   └── unit/ai/                # Vitest unit tests cho toàn bộ AI module
 ├── scripts/
 │   ├── gen.ts                  # CLI: gen page | gen api | gen scenario
-│   ├── gen-schemas-from-openapi.ts  # OpenAPI/Swagger → Zod schemas
-│   ├── gen-suite.ts            # OpenAPI → service classes + test suite (bulk gen)
 │   ├── heal-report.ts          # HTML dashboard từ heal-events.jsonl
 │   └── codegen-report.ts       # LLM cost breakdown report
 ├── docs/
 │   ├── ARCHITECTURE.md         # Hybrid pattern, diagrams, AI flows
 │   ├── ONBOARDING.md           # 1-week plan cho QA mới
 │   ├── AI_FEATURES.md          # Hướng dẫn self-heal + codegen
-│   ├── AI_CODEGEN.md           # Code generation CLI reference
 │   └── JENKINS_SETUP.md        # Cài Jenkins: plugins, credentials, webhook
 ├── Dockerfile                  # playwright:v1.59.1-jammy, HUSKY=0 npm ci
 ├── Jenkinsfile                 # Declarative Pipeline: matrix chromium×firefox
@@ -132,11 +118,9 @@ codecept-hybrid/
 |---|---|
 | `npm run test:ui:ai` | Bật `AI_HEAL_ENABLED=true`, chạy UI tests với self-healing |
 | `npm run heal:report` | Generate HTML dashboard từ `output/heal-events.jsonl` |
-| `npm run gen:page -- --url <URL> --name <Name>` | Generate Fragment + Page + Test từ URL (3 files) |
-| `npm run gen:api -- --curl '<curl>' --name <Name>` | Generate Zod Schema + Service + Test từ cURL (3 files) |
+| `npm run gen:page -- --url <URL> --name <Name>` | Generate Fragment + Page + Test từ URL |
+| `npm run gen:api -- --curl '<curl>' --name <Name>` | Generate Service + Test từ cURL |
 | `npm run gen:scenario -- --description '<mô tả>'` | Generate test scenario |
-| `npm run schemas:gen -- --spec <path\|url>` | Generate Zod schemas từ OpenAPI/Swagger spec |
-| `npm run gen:suite -- --spec <path\|url>` | Generate service classes + test suite từ OpenAPI spec (bulk) |
 | `npm run codegen:report` | LLM cost breakdown (provider, tokens, $$$) |
 
 ### Reporting
@@ -157,8 +141,6 @@ codecept-hybrid/
 | `npm run lint:fix` | ESLint + auto-fix |
 | `npm run format` | Prettier write |
 | `npm run visual:update` | Cập nhật visual baselines |
-
-> **Allure auto-clean**: Tất cả `test:*` scripts đều có `rimraf output/reports/allure` ở đầu — report chỉ chứa kết quả của lần chạy gần nhất, không tích lũy từ các lần trước.
 
 ---
 
@@ -195,7 +177,6 @@ Xem [.env.example](.env.example) để có đầy đủ danh sách. Các biến 
 | `ANTHROPIC_API_KEY` | Chỉ khi dùng AI | Claude API key |
 | `AI_HEAL_ENABLED` | Không | `true` để bật self-healing |
 | `MAX_DAILY_BUDGET_USD` | Không | Default: `5` |
-| `ATTACH_API_TO_REPORT` | Không | `false` để tắt API request/response attachments trong Allure (mặc định: bật) |
 
 ---
 

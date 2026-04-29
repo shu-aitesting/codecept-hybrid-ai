@@ -80,7 +80,7 @@ Methods:
 
 ```
 RestClient          ← init Playwright APIRequestContext (baseURL + SSL)
-    │               ← accepts onResponse callback (dùng cho Allure attachment)
+    │
 RestRequestBuilder  ← Fluent builder
     │   .get(url) / .post(url) / .put / .patch / .delete
     │   .header(k, v) / .headers({...})
@@ -90,88 +90,22 @@ RestRequestBuilder  ← Fluent builder
     │   .build()  →  RestRequest
     │
 RestHelper          ← CodeceptJS Helper, expose I.api() và I.sendGet/sendPost/...
-    │               ← wires onResponse → Allure attachment (request + response JSON)
-    │               ← redacts Authorization / Cookie / X-Api-Key headers
     │
 RestResponse<T>     ← { status, headers, body: T, durationMs }
-    │   Assertion chain (fluent, returns this):
-    │   .expectStatus(code)
-    │   .expectHeader(name, value)
-    │   .expectJsonPath(path, value)
-    │   .expectMatchesSchema(zodSchema)    ← Zod schema validation
-    │   .expectMatchesArraySchema(itemSchema)
-    │   .expectResponseTime(maxMs)         ← SLA assertion
-    │   .expectContentType(mime | regex)
-    │   .expectArrayLength(path, n)
-    │   .expectArrayLengthAtLeast(path, n)
-    │   .expectArrayLengthAtMost(path, n)
-    │   .expectArrayContains(path, predicate)
-    │   .expectEvery(path, predicate)
-    │   Terminal:
-    │   .parseWith<U>(zodSchema)  →  U    ← validate + return typed data
 ```
 
 **Dùng trong test:**
 
 ```typescript
-// Assertion chain với schema validation
-const res = await I.sendGet<User>('/users/1');
-res
-  .expectStatus(200)
-  .expectMatchesSchema(UserSchema)
-  .expectResponseTime(2000)
-  .expectContentType('application/json');
+// Qua RestHelper (inject qua CodeceptJS)
+const res = await I.sendGet('/users');
 
-// Terminal — typed return value
-const user = (await I.sendGet('/users/1')).parseWith(UserSchema);
-// user: z.infer<typeof UserSchema>
-
-// Array assertions
-const list = await I.sendGet('/users');
-list.expectMatchesArraySchema(UserSchema).expectArrayLengthAtLeast('$', 1);
+// Qua fluent builder
+const res = await I.api().post('/users').json({ name: 'Alice' }).send();
+I.assertEqual(res.status, 201);
 ```
 
-**Allure attachment:** `RestHelper` tự động gắn request/response JSON vào mỗi Allure test case.
-- Tắt: `ATTACH_API_TO_REPORT=false npm run test:api`
-- Headers nhạy cảm (Authorization, Cookie, X-Api-Key) tự động bị redact.
-
-**CurlConverter:** Parse cURL string → RestRequest. Hỗ trợ query string từ URL, bearer/basic/apikey auth detection. Dùng cho `gen api` CLI và debug (copy cURL từ browser DevTools).
-
----
-
-## 3a. Schema Validation Layer
-
-Hand-written schemas + generated schemas cùng tồn tại:
-
-```
-src/api/schemas/
-├── common.schema.ts    ← BaseErrorSchema, PaginationSchema, IsoDateString
-├── user.schema.ts      ← UserSchema, UserListSchema, CreateUserRequestSchema
-├── post.schema.ts      ← PostSchema, PostListSchema, CreatePostRequestSchema
-├── index.ts            ← barrel re-export (hand-written + generated)
-└── _generated.ts       ← AUTO-GENERATED từ OpenAPI spec (npm run schemas:gen)
-```
-
-**Workflow:**
-
-```bash
-# Sinh schemas từ OpenAPI/Swagger spec (idempotent — re-run an toàn)
-npm run schemas:gen -- --spec path/to/swagger.json
-
-# Nếu spec không thay đổi: "Schema file is up-to-date" (exit 0, không re-generate)
-```
-
-**Dùng trong test:**
-
-```typescript
-import { UserSchema } from '@api/schemas';
-
-const res = await svc.getUser(1);
-res.expectStatus(200).expectMatchesSchema(UserSchema);
-
-// Hoặc terminal — typed
-const user = res.parseWith(UserSchema);
-```
+**CurlConverter:** Parse cURL string → RestRequest. Dùng cho `gen api` CLI và debug (copy cURL từ browser DevTools).
 
 ---
 
@@ -253,7 +187,7 @@ flowchart TD
 
 ## 6. Code Generation Pipeline
 
-Tất cả agents (HtmlToFragmentAgent, CurlToApiAgent, ScenarioGeneratorAgent, OpenApiSuiteAgent) đi qua `GenerationPipeline` chung:
+Tất cả agents (HtmlToFragmentAgent, CurlToApiAgent, ScenarioGeneratorAgent) đi qua `GenerationPipeline` chung:
 
 ```mermaid
 flowchart LR
@@ -269,31 +203,9 @@ flowchart LR
   Validate -- "Fail" --> Retry
 ```
 
-**HtmlToFragmentAgent** — input: HTML/URL → output 3 files:
+**HtmlToFragmentAgent** thêm bước pre-processing:
 1. `DomSanitizer` — rút gọn HTML
 2. `LocatorScorer` — rank top-5 candidates (data-testid → id → text → attr) trước khi feed LLM → LLM chỉ cần đặt tên + tổ chức, không cần "đoán" selector
-
-**CurlToApiAgent** — input: cURL string → output 3 files:
-- `src/api/schemas/{Name}.schema.ts` — Zod schema cho request/response
-- `src/api/services/{Name}Service.ts` — typed service class
-- `tests/api/smoke/{name}.test.ts` — test với schema validation + SLA assertions
-
-**OpenApiSuiteAgent** (bulk gen) — input: OpenAPI/Swagger spec → output N×2 files (1 service + 1 test per tag):
-```
-1. OperationParser   → parse spec → typed Operation[] → group by tag
-2. ServiceTemplate   → deterministic Mustache render → {Tag}Service.ts (no LLM)
-3. GenerationPipeline → LLM per tag → test scenarios → test file
-```
-
-- **Deterministic service** (no LLM): mapping 1-1 từ OpenAPI operation → typed method
-- **LLM test** (batch per tag): sinh ≥3 scenarios/operation (happy + schema + sla + negative)
-- **Cost**: ~$0.05/run với 5 tags sau prompt caching (~$0.25 first run)
-- **Idempotent**: SQLite cache key = SHA-256(spec + tag + ops) — re-run không gọi LLM lại
-- **Output isolation**: `_generated/` subfolders không đè hand-written code
-
-```bash
-npm run gen:suite -- --spec swagger.json [--tags users,pets] [--exclude-deprecated] [--dry-run]
-```
 
 ---
 

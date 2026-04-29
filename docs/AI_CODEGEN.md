@@ -9,9 +9,8 @@ Three agents that convert real-world inputs into working TypeScript test code. E
 | Agent | Input | Output | Cost (est.) | When to use |
 |---|---|---|---|---|
 | `HtmlToFragmentAgent` | HTML / URL | Fragment + Page + Test (3 files) | ~$0.03–0.08 | New page/component — auto-generate the skeleton |
-| `CurlToApiAgent` | cURL command | Zod Schema + Service + Test (3 files) | ~$0.02–0.05 | New API endpoint — convert Postman/curl to typed service with schema validation |
+| `CurlToApiAgent` | cURL command | Service class + API test (2 files) | ~$0.02–0.05 | New API endpoint — convert Postman/curl to typed service |
 | `ScenarioGeneratorAgent` | User story text | Gherkin feature + step defs (2 files) | ~$0.02–0.04 | BA story → draft test scenarios with edge cases |
-| `OpenApiSuiteAgent` | OpenAPI/Swagger spec | N×(Service + Test) per tag | ~$0.05/run (cached) | Bulk gen entire API test suite from Swagger spec |
 
 ---
 
@@ -24,20 +23,14 @@ npm run gen:page -- --html-file ./samples/login.html --name LoginForm
 # Fragment + Page + Test from a URL (live fetch)
 npm run gen:page -- --url https://your-app.local/login --name LoginForm
 
-# Zod Schema + Service + Test from a cURL command (3 files)
+# Service + API Test from a cURL command
 npm run gen:api -- --curl "curl -X POST https://api.example.com/users -H 'Content-Type: application/json' -d '{\"name\":\"Alice\"}'" --name User
 
-# Zod Schema + Service + Test from a cURL file
+# Service + API Test from a cURL file
 npm run gen:api -- --curl-file ./samples/users.curl --name User
 
 # Gherkin feature + step definitions from a user story
 npm run gen:scenario -- --story "As a user I want to log in with email and password" --name Login
-
-# Generate Zod schemas from OpenAPI/Swagger spec
-npm run schemas:gen -- --spec ./openapi.json
-
-# Bulk generate service classes + test suite from OpenAPI spec
-npm run gen:suite -- --spec ./openapi.json [--tags users,orders] [--exclude-deprecated]
 
 # Preview any command without writing files
 npm run gen:page -- --url https://your-app.local/login --name Login --dry-run
@@ -79,45 +72,8 @@ Options:
 ```
 
 Writes to:
-- `{outputDir}/schemas/{Name}Schema.ts` — Zod schema cho request/response
-- `{outputDir}/services/{Name}Service.ts` — typed service class
-- `tests/api/smoke/{name}.test.ts` — test với schema validation + SLA + error cases
-
----
-
-### `npm run schemas:gen`
-
-```
-Options:
-  --spec <path|url>    Path hoặc URL đến OpenAPI/Swagger spec (required)
-  --out <dir>          Output dir (default: src/api/schemas)
-  --force              Re-generate ngay cả khi spec không thay đổi
-```
-
-Writes to:
-- `{out}/_generated.ts` — tất cả Zod schemas từ spec
-- `{out}/index.ts` — barrel re-export (cập nhật)
-- `{out}/.openapi-hash` — hash để idempotency check
-
----
-
-### `npm run gen:suite`
-
-```
-Options:
-  --spec <path|url>          Path hoặc URL đến OpenAPI/Swagger spec (required)
-  --tags <tags>              Comma-separated list of tags (e.g. "users,pets")
-  --include-paths <globs>    Comma-separated path glob patterns (e.g. "/api/v2/*")
-  --exclude-deprecated       Skip deprecated operations
-  --out-services <dir>       Output dir cho service files (default: src/api/services/_generated)
-  --out-tests <dir>          Output dir cho test files (default: tests/api/_generated)
-  --dry-run                  Preview, no files
-  --no-cache                 Bypass LLM idempotency cache
-```
-
-Writes to (per tag):
-- `{outServices}/{Tag}Service.ts` — deterministic service class (no LLM)
-- `{outTests}/{tag}.test.ts` — LLM-generated test scenarios
+- `{outputDir}/services/{Name}Service.ts`
+- `tests/api/{name}-service.test.ts`
 
 ### `npm run gen:scenario`
 

@@ -32,7 +32,7 @@ cp .env.example .env.dev
 ```bash
 npm run typecheck        # phải pass — không có lỗi TypeScript
 npm run lint             # phải pass
-npm run test:unit        # 100+ tests, không cần browser hay server
+npm run test:unit        # 23 tests, không cần browser hay server
 ```
 
 **Chạy E2E (cần app đang chạy):**
@@ -142,29 +142,22 @@ ENV=dev npm run test:ui # chạy UI tests, xem Fragment được gọi
 
 Đọc `src/api/rest/RestRequestBuilder.ts` (phần đầu, khoảng 30 dòng đủ hiểu fluent pattern).
 
-Đọc `src/api/schemas/user.schema.ts` để hiểu Zod schemas và cách dùng trong assertions.
-
 Chạy API test có sẵn và xem output:
 ```bash
 ENV=dev npm run test:api
 ```
 
-**Phần 2 — Viết API test mới với schema validation:**
+**Phần 2 — Viết API test mới:**
 
 Tạo `tests/api/smoke/search.test.ts`:
 
 ```typescript
-import { UserSchema } from '@api/schemas';
-
 Feature('Search API @api @smoke');
 
-Scenario('GET /users/1 returns valid user', async ({ I }) => {
-  const res = await I.sendGet('/users/1');
-  res
-    .expectStatus(200)
-    .expectMatchesSchema(UserSchema)     // validate cấu trúc response
-    .expectResponseTime(2000)            // SLA: dưới 2 giây
-    .expectContentType('application/json');
+Scenario('GET /search returns results for valid query', async ({ I }) => {
+  const res = await I.sendGet('/search?q=laptop');
+  I.assertEqual(res.status, 200);
+  I.assertTrue(Array.isArray(res.body.results));
 });
 ```
 
@@ -222,10 +215,9 @@ npm run gen:api -- \
   --name Order
 ```
 
-Output (3 files):
-- `src/api/schemas/OrderSchema.ts` — Zod schema cho request/response
-- `src/api/services/OrderService.ts` — typed service class
-- `tests/api/smoke/order.test.ts` — test với schema validation + SLA assertions
+Output:
+- `src/api/services/OrderService.ts`
+- `tests/api/smoke/order.test.ts`
 
 Review và chạy `npm run typecheck`.
 
@@ -291,10 +283,8 @@ npm run heal:report                                 # xem heal stats
 
 # Code gen
 npm run gen:page -- --url <URL> --name <Name>
-npm run gen:api -- --curl '<cURL>' --name <Name>        # 3 files: schema + service + test
+npm run gen:api -- --curl '<cURL>' --name <Name>
 npm run gen:scenario -- --description '<mô tả>'
-npm run schemas:gen -- --spec <swagger.json>            # sinh Zod schemas từ OpenAPI spec
-npm run gen:suite -- --spec <swagger.json>              # sinh toàn bộ service + test suite
 
 # Xem report
 npm run report:allure                # generate + mở
@@ -322,9 +312,3 @@ A: LLM đoán từ HTML — selectors không phải lúc nào cũng đúng 100%.
 
 **Q: Commit bị reject bởi commitlint?**
 A: Dùng format `type(scope): message`. Ví dụ: `feat(ui): add CheckoutFragment`.
-
-**Q: Allure report hiển thị kết quả từ các lần chạy trước?**
-A: Không nên xảy ra — tất cả `test:*` scripts đã tự động xoá `output/reports/allure` trước khi chạy. Nếu dùng lệnh `codeceptjs run` trực tiếp (không qua npm scripts), chạy `npm run report:clean` trước.
-
-**Q: API request/response không hiện trong Allure?**
-A: Đây là tính năng mặc định bật — mỗi API call được attach vào Allure. Tắt bằng `ATTACH_API_TO_REPORT=false npm run test:api`.

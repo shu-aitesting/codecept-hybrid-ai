@@ -208,7 +208,7 @@ program
       process.exit(1);
     }
 
-    const spinner = ora('Generating Schema + Service + API Test…').start();
+    const spinner = ora('Generating Service + API Test…').start();
     try {
       const agent = new CurlToApiAgent();
       const result = await agent.run(
@@ -225,15 +225,12 @@ program
       );
       spinner.succeed('Generated');
       if (opts['dryRun']) {
-        console.log('\n' + chalk.cyan('── schemaTs ──'));
-        console.log(result.schemaTs);
         console.log('\n' + chalk.cyan('── serviceTs ──'));
         console.log(result.serviceTs);
         console.log('\n' + chalk.cyan('── testTs ──'));
         console.log(result.testTs);
       } else {
-        console.log(chalk.green('3 files written: schema, service, test.'));
-        console.log(chalk.dim('Run `npm run typecheck` to verify.'));
+        console.log(chalk.green('Files written.'));
       }
     } catch (err) {
       spinner.fail(`Generation failed: ${(err as Error).message}`);
@@ -299,83 +296,6 @@ program
       }
     } catch (err) {
       spinner.fail(`Generation failed: ${(err as Error).message}`);
-      process.exit(1);
-    }
-  });
-
-// ─── gen schemas ─────────────────────────────────────────────────────────────
-program
-  .command('schemas')
-  .description('Generate Zod schemas from an OpenAPI/Swagger spec (wraps schemas:gen script)')
-  .requiredOption('--spec <path|url>', 'Path or URL to the OpenAPI/Swagger spec file')
-  .option(
-    '--out <dir>',
-    'Output directory for generated schemas',
-    path.join(process.cwd(), 'src', 'api', 'schemas'),
-  )
-  .option('--force', 'Regenerate even if the spec has not changed', false)
-  .action(async (opts: { spec: string; out: string; force: boolean }) => {
-    const spinner = ora('Running schemas:gen…').start();
-    try {
-      const { loadSpecFromFile, parseSpec, normaliseToOpenApi3, computeHash, updateBarrel } =
-        // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
-        require('./gen-schemas-from-openapi') as typeof import('./gen-schemas-from-openapi');
-      const { generateZodClientFromOpenAPI } =
-        // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
-        require('openapi-zod-client') as typeof import('openapi-zod-client');
-
-      const rawSpec = await loadSpecFromFile(opts.spec);
-      const parsed = parseSpec(rawSpec, opts.spec);
-      const openApiDoc = await normaliseToOpenApi3(parsed);
-
-      const libVersion = (
-        JSON.parse(
-          fs.readFileSync(
-            path.join(process.cwd(), 'node_modules/openapi-zod-client/package.json'),
-            'utf8',
-          ),
-        ) as { version: string }
-      ).version;
-
-      const hash = computeHash(JSON.stringify(openApiDoc) + libVersion);
-      const outDir = path.resolve(process.cwd(), opts.out);
-      const hashFile = path.join(outDir, '.openapi-hash');
-      const generatedFile = path.join(outDir, '_generated.ts');
-
-      if (!opts.force && fs.existsSync(hashFile)) {
-        const existing = fs.readFileSync(hashFile, 'utf8').trim();
-        if (existing === hash) {
-          spinner.succeed(chalk.green('Schemas are up-to-date. Use --force to regenerate.'));
-          return;
-        }
-      }
-
-      spinner.text = 'Generating Zod schemas…';
-      fs.mkdirSync(outDir, { recursive: true });
-      const tmpFile = generatedFile + '.tmp';
-
-      await generateZodClientFromOpenAPI({
-        openApiDoc,
-        distPath: tmpFile,
-        options: { withDescription: false, withDocs: false, shouldExportAllSchemas: true },
-      });
-
-      const generated = fs.readFileSync(tmpFile, 'utf8');
-      fs.writeFileSync(
-        tmpFile,
-        `// AUTO-GENERATED — do not edit. Run \`npm run schemas:gen\` to refresh.\n${generated}`,
-        'utf8',
-      );
-      fs.renameSync(tmpFile, generatedFile);
-      updateBarrel(outDir);
-      fs.writeFileSync(hashFile, hash, 'utf8');
-
-      spinner.succeed(
-        chalk.green(`Schemas written to ${path.relative(process.cwd(), generatedFile)}`),
-      );
-      console.log(chalk.dim('Run `npm run typecheck` to verify.'));
-    } catch (err) {
-      spinner.fail(`Schema generation failed: ${(err as Error).message}`);
       process.exit(1);
     }
   });
