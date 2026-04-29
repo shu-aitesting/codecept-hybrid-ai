@@ -1,0 +1,26 @@
+{
+  "basicProduct": {
+    "name": "Test Widget",
+    "price": 19.99,
+    "category": "Electronics",
+    "sku": "WIDGET01",
+    "inStock": true,
+    "description": "A basic test product for automation"
+  },
+  "premiumProduct": {
+    "name": "Premium Device",
+    "price": 999.99,
+    "category": "Electronics",
+    "sku": "PREMIUM01",
+    "inStock": true,
+    "description": "High-end product for edge-case price testing"
+  },
+  "outOfStock": {
+    "name": "Unavailable Item",
+    "price": 49.99,
+    "category": "Accessories",
+    "sku": "NOSTOCK01",
+    "inStock": false,
+    "description": "Out-of-stock product for negative UI tests"
+  }
+}
