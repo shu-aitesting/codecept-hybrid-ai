@@ -16,7 +16,7 @@ class LandingSteps {
   }
 
   async verifyHeroSectionVisible(): Promise<void> {
-    await this.I.seeElement(this.page.main.selectors.heroTitle);
+    await this.page.main.verifyHeroVisible();
   }
 
   async createGiftList(): Promise<void> {

@@ -26,11 +26,47 @@ import { TaskAwareRouter } from '../../../../src/ai/providers/TaskAwareRouter';
 
 const VALID_OUTPUT = JSON.stringify({
   fragments: [
-    { name: 'LoginFormFragment', fragmentTs: 'class LoginFormFragment extends BaseFragment {}' },
+    {
+      name: 'LoginFormFragment',
+      fragmentTs: [
+        "import { BaseFragment } from '../base/BaseFragment';",
+        'class LoginFormFragment extends BaseFragment {',
+        '  constructor() { super(\'[data-testid="login-form"]\'); }',
+        '  readonly selectors = { submitBtn: \'button[type="submit"]\' } as const;',
+        '  async waitToLoad(): Promise<void> { this.I.waitForElement(this.root, 10); }',
+        '  async submit(): Promise<void> { await this.within(() => this.I.click(this.selectors.submitBtn)); }',
+        '  async verifySubmitVisible(): Promise<void> { this.I.seeElement(this.selectors.submitBtn); }',
+        '}',
+        'export = LoginFormFragment;',
+      ].join('\n'),
+    },
   ],
-  pageTs: 'export class LoginPage extends BasePage {}',
-  stepsTs: 'class LoginSteps {} export = new LoginSteps();',
-  testTs: 'Scenario("login", () => {});',
+  pageTs: [
+    "import LoginFormFragment = require('../fragments/features/LoginFormFragment');",
+    "import { BasePage } from './base/BasePage';",
+    'export class LoginPage extends BasePage {',
+    "  path = '/login';",
+    '  form = new LoginFormFragment();',
+    '  async waitForLoad(): Promise<void> { await this.form.waitToLoad(); }',
+    '}',
+  ].join('\n'),
+  stepsTs: [
+    "import { LoginPage } from '../pages/LoginPage';",
+    'class LoginSteps {',
+    '  private readonly page = new LoginPage();',
+    '  protected get I(): CodeceptJS.I { return inject().I; }',
+    '  async navigateToLogin(): Promise<void> { await this.page.open(); }',
+    '  async verifySubmitVisible(): Promise<void> { await this.page.form.verifySubmitVisible(); }',
+    '}',
+    'export = new LoginSteps();',
+  ].join('\n'),
+  testTs: [
+    "Feature('Login').tag('@ui').tag('@smoke');",
+    "Scenario('Login form is visible', async ({ loginSteps }) => {",
+    '  await loginSteps.navigateToLogin();',
+    '  await loginSteps.verifySubmitVisible();',
+    "}).tag('@smoke');",
+  ].join('\n'),
 });
 
 const outputSchema = z.object({

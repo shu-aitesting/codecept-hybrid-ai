@@ -5,7 +5,7 @@ class LandingHeaderFragment extends BaseFragment {
     super('header');
   }
 
-  selectors = {
+  readonly selectors = {
     menuButton: '[aria-label="Menu"]',
     searchButtonLeft: '[aria-label="Search"]',
     searchButtonRight: '[aria-label="Search"]',
@@ -19,18 +19,18 @@ class LandingHeaderFragment extends BaseFragment {
     collectionsLink: '[href="/collections"]',
     aboutUsLink: '[href="/about-us"]',
     showroomLink: '[href="/showrooms"]',
-  };
+  } as const;
 
   async waitToLoad(): Promise<void> {
-    await this.I.waitForElement(this.selectors.logoLink, 5);
+    this.I.waitForElement(this.selectors.logoLink, 5);
   }
 
   async openMenu(): Promise<void> {
-    await this.I.click(this.selectors.menuButton);
+    this.I.click(this.selectors.menuButton);
   }
 
   async search(): Promise<void> {
-    await this.I.click(this.selectors.searchButtonLeft);
+    this.I.click(this.selectors.searchButtonLeft);
   }
 }
 

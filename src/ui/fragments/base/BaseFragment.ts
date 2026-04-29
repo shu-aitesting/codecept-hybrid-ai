@@ -7,7 +7,7 @@ export abstract class BaseFragment {
 
   abstract waitToLoad(): Promise<void>;
 
-  protected within(fn: () => void): void {
-    within(this.root, fn);
+  protected within(fn: () => void): Promise<void> {
+    return Promise.resolve(within(this.root, fn));
   }
 }

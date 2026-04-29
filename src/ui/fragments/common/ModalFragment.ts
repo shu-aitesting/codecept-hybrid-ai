@@ -5,27 +5,27 @@ class ModalFragment extends BaseFragment {
     super(rootSelector);
   }
 
-  selectors = {
+  readonly selectors = {
     title: '.modal-title',
     confirmBtn: '[data-testid="confirm"]',
     cancelBtn: '[data-testid="cancel"]',
     closeIcon: '.modal-close',
-  };
+  } as const;
 
   async waitToLoad(): Promise<void> {
     this.I.waitForElement(this.root, 5);
   }
 
   async confirm(): Promise<void> {
-    this.within(() => this.I.click(this.selectors.confirmBtn));
+    await this.within(() => this.I.click(this.selectors.confirmBtn));
   }
 
   async cancel(): Promise<void> {
-    this.within(() => this.I.click(this.selectors.cancelBtn));
+    await this.within(() => this.I.click(this.selectors.cancelBtn));
   }
 
   async close(): Promise<void> {
-    this.within(() => this.I.click(this.selectors.closeIcon));
+    await this.within(() => this.I.click(this.selectors.closeIcon));
   }
 
   async getTitle(): Promise<string> {

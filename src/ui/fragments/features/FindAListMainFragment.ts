@@ -5,7 +5,7 @@ class FindAListMainFragment extends BaseFragment {
     super('main');
   }
 
-  selectors = {
+  readonly selectors = {
     firstNameInput: '#firstName',
     lastNameInput: '#lastName',
     weddingYearDropdown: '[placeholder="Wedding year"]',
@@ -13,10 +13,10 @@ class FindAListMainFragment extends BaseFragment {
     searchButton: '[type="submit"]',
     faqAccordion: '.accordion_wrapper',
     faqQuestions: '.accordion_sectionTitle',
-  };
+  } as const;
 
   async waitToLoad(): Promise<void> {
-    await this.I.waitForElement(this.selectors.searchButton, 5);
+    this.I.waitForElement(this.selectors.searchButton, 5);
   }
 
   async fillSearchForm(firstName: string, lastName: string): Promise<void> {
@@ -31,6 +31,10 @@ class FindAListMainFragment extends BaseFragment {
 
   async submitSearch(): Promise<void> {
     this.I.click(this.selectors.searchButton);
+  }
+
+  async verifyFaqVisible(): Promise<void> {
+    this.I.seeElement(this.selectors.faqAccordion);
   }
 }
 

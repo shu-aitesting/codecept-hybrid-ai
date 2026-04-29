@@ -5,20 +5,24 @@ class LandingYourUltimateFragment extends BaseFragment {
     super('main');
   }
 
-  selectors = {
+  readonly selectors = {
     heroTitle: 'h1',
     createListButton: '[href="/register"]',
     findListButton: '[href="/find-a-list"]',
     whyChooseTitle: '.benefit-section_title h2',
     brandCarousel: '.brands-section_carouselsWrapper',
-  };
+  } as const;
 
   async waitToLoad(): Promise<void> {
-    await this.I.waitForElement(this.selectors.heroTitle, 5);
+    this.I.waitForElement(this.selectors.heroTitle, 5);
   }
 
   async createGiftList(): Promise<void> {
-    await this.I.click(this.selectors.createListButton);
+    this.I.click(this.selectors.createListButton);
+  }
+
+  async verifyHeroVisible(): Promise<void> {
+    this.I.seeElement(this.selectors.heroTitle);
   }
 }
 

@@ -5,7 +5,7 @@ class LandingFragment extends BaseFragment {
     super('body');
   }
 
-  selectors = {
+  readonly selectors = {
     menuButton: '[aria-label="Menu"]',
     searchButton: '[aria-label="Search"]',
     createListHeader: 'a.cta_root__CXED3.cta_headerFont__FihAJ',
@@ -22,7 +22,7 @@ class LandingFragment extends BaseFragment {
     carouselPrevButton: '[aria-label="Previous slide"]',
     carouselNextButton: '[aria-label="Next slide"]',
     videoMuteButton: '[aria-label="Unmute video"]',
-  };
+  } as const;
 
   async waitToLoad(): Promise<void> {
     this.I.waitForElement(this.selectors.menuButton, 10);

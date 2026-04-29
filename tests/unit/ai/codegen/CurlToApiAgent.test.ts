@@ -5,9 +5,16 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { CurlToApiAgent, CurlToApiInput, CurlToApiOutput } from '../../../../src/ai/codegen/CurlToApiAgent';
+import {
+  CurlToApiAgent,
+  CurlToApiInput,
+  CurlToApiOutput,
+} from '../../../../src/ai/codegen/CurlToApiAgent';
 import { GenerationCache } from '../../../../src/ai/codegen/GenerationCache';
-import { GenerationFailedError, GenerationPipeline } from '../../../../src/ai/codegen/GenerationPipeline';
+import {
+  GenerationFailedError,
+  GenerationPipeline,
+} from '../../../../src/ai/codegen/GenerationPipeline';
 import { PromptLibrary } from '../../../../src/ai/prompts/PromptLibrary';
 import { BudgetGuard } from '../../../../src/ai/providers/BudgetGuard';
 import { CircuitBreaker } from '../../../../src/ai/providers/CircuitBreaker';
@@ -17,7 +24,6 @@ import { RateLimitTracker } from '../../../../src/ai/providers/RateLimitTracker'
 import { StructuredOutputParser } from '../../../../src/ai/providers/StructuredOutputParser';
 import { TaskAwareRouter } from '../../../../src/ai/providers/TaskAwareRouter';
 import { CurlConverter } from '../../../../src/api/rest/CurlConverter';
-
 
 const VALID_OUTPUT = JSON.stringify({
   serviceTs: 'export class UserService { async createUser() {} }',
@@ -29,7 +35,9 @@ const outputSchema = z.object({ serviceTs: z.string().min(1), testTs: z.string()
 function makeRouter(mock: MockProvider) {
   const costMeter = new CostMeter({ filePath: path.join(os.tmpdir(), `cost-${Date.now()}.jsonl`) });
   const budgetGuard = new BudgetGuard({ costMeter, maxDailyUsd: 999 });
-  const rateLimit = new RateLimitTracker({ filePath: path.join(os.tmpdir(), `rl-${Date.now()}.json`) });
+  const rateLimit = new RateLimitTracker({
+    filePath: path.join(os.tmpdir(), `rl-${Date.now()}.json`),
+  });
   return new TaskAwareRouter('codegen', {
     providers: { 'anthropic:sonnet': mock },
     costMeter,
@@ -48,13 +56,17 @@ function makePipeline(
       agentName: 'curl-to-api',
       promptTemplate: 'curl-to-api',
       outputSchema,
-      inputHasher: (i) => crypto.createHash('sha256').update(`${i.serviceName}:${i.curl}`).digest('hex'),
+      inputHasher: (i) =>
+        crypto.createHash('sha256').update(`${i.serviceName}:${i.curl}`).digest('hex'),
       contextBuilder: async (i) => {
         const req = CurlConverter.fromCurl(i.curl);
+        const parsed = new URL(req.url);
         return {
           serviceName: i.serviceName,
           method: req.method,
           url: req.url,
+          baseUrl: parsed.origin,
+          endpoint: parsed.pathname + (parsed.search || ''),
           headers: JSON.stringify(req.headers),
           body: req.body ? JSON.stringify(req.body) : '{}',
           endpointDescription: `Endpoint for ${i.serviceName}`,
@@ -86,7 +98,7 @@ afterEach(() => {
 
 describe('CurlToApiAgent', () => {
   const SAMPLE_CURL =
-    "curl -X POST https://api.example.com/users -H 'Content-Type: application/json' -d '{\"name\":\"Alice\"}'";
+    'curl -X POST https://api.example.com/users -H \'Content-Type: application/json\' -d \'{"name":"Alice"}\'';
 
   // ── Happy path ────────────────────────────────────────────────────────────
 
@@ -138,7 +150,10 @@ describe('CurlToApiAgent', () => {
     const agent = new CurlToApiAgent({ pipeline: makePipeline(mock, cache) });
 
     await expect(
-      agent.run({ curl: 'curl http://x.com', serviceName: 'Empty', outputDir: '/tmp' }, { skipCache: true }),
+      agent.run(
+        { curl: 'curl http://x.com', serviceName: 'Empty', outputDir: '/tmp' },
+        { skipCache: true },
+      ),
     ).resolves.toHaveProperty('serviceTs');
   });
 
@@ -196,11 +211,20 @@ describe('CurlToApiAgent', () => {
         agentName: 'curl-to-api',
         promptTemplate: 'curl-to-api',
         outputSchema,
-        inputHasher: (i) =>
-          crypto.createHash('sha256').update(JSON.stringify(i)).digest('hex'),
+        inputHasher: (i) => crypto.createHash('sha256').update(JSON.stringify(i)).digest('hex'),
         contextBuilder: async (i) => {
           const req = CurlConverter.fromCurl(i.curl);
-          return { serviceName: i.serviceName, method: req.method, url: req.url, headers: '{}', body: '{}', endpointDescription: 'x' };
+          const parsed = new URL(req.url);
+          return {
+            serviceName: i.serviceName,
+            method: req.method,
+            url: req.url,
+            baseUrl: parsed.origin,
+            endpoint: parsed.pathname + (parsed.search || ''),
+            headers: '{}',
+            body: '{}',
+            endpointDescription: 'x',
+          };
         },
         outputMapper: () => ({ [targetFile]: 'content' }),
       },

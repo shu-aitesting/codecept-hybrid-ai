@@ -91,39 +91,63 @@ Tạo file `src/ui/fragments/common/SearchBarFragment.ts` (hoặc component bạ
 import { BaseFragment } from '../base/BaseFragment';
 
 class SearchBarFragment extends BaseFragment {
-  root = '[data-testid="search-bar"]'; // thay bằng selector thật
+  constructor() {
+    super('[data-testid="search-bar"]'); // thay bằng selector thật
+  }
 
-  selectors = {
+  // readonly + as const: immutable, TypeScript infer literal types
+  readonly selectors = {
     input: 'input[type="search"]',
     clearBtn: '[data-testid="clear-search"]',
     resultsCount: '[data-testid="results-count"]',
-  };
+  } as const;
+
+  async waitToLoad(): Promise<void> {
+    this.I.waitForElement(this.root, 10); // không await — CodeceptJS type I.* là void
+  }
 
   async search(term: string): Promise<void> {
-    await this.within(async () => {
+    await this.within(() => {           // await this.within() — trả về Promise<void>
       this.I.fillField(this.selectors.input, term);
       this.I.pressKey('Enter');
     });
   }
 
   async clear(): Promise<void> {
-    await this.within(async () => {
+    await this.within(() => {
       this.I.click(this.selectors.clearBtn);
     });
   }
+
+  // verify* method: để Step Object/Test gọi thay vì truy cập .selectors trực tiếp
+  async verifyResultsVisible(): Promise<void> {
+    this.I.seeElement(this.selectors.resultsCount);
+  }
 }
 
-export = new SearchBarFragment();
+// export class (không phải singleton) vì Fragment được dùng qua new trong Page
+export = SearchBarFragment;
 ```
 
-**Đăng ký vào `codecept.conf.ts`:**
+**Dùng trong Page Object (không đăng ký vào `include`):**
 
 ```typescript
-include: {
-  // ...các fragment cũ
-  searchBar: './src/ui/fragments/common/SearchBarFragment.ts',
+// src/ui/pages/SomePage.ts
+import SearchBarFragment = require('../fragments/common/SearchBarFragment');
+import { BasePage } from './base/BasePage';
+
+export class SomePage extends BasePage {
+  path = '/search';
+  searchBar = new SearchBarFragment();
+  async waitForLoad(): Promise<void> { await this.searchBar.waitToLoad(); }
 }
 ```
+
+**Quy tắc nhanh — xem đầy đủ tại [config/ai/AGENT_VALIDATION_CHECKLIST.md](../config/ai/AGENT_VALIDATION_CHECKLIST.md):**
+- `readonly selectors = { ... } as const` — bắt buộc
+- Không `await` trước `this.I.click/fillField/waitForElement` (void type)
+- `await this.within(() => {...})` — bắt buộc await
+- Export class (không phải instance) khi Fragment dùng qua `new` trong Page
 
 **Viết unit test nhỏ:**
 
@@ -246,6 +270,17 @@ ENV=dev npm run test:visual          # diff xuất hiện tại output/visual-di
 npm run typecheck        # 0 errors
 npm run lint             # 0 errors
 npm run test:unit        # all pass
+```
+
+**Tự review code theo checklist:**
+
+Mở [config/ai/AGENT_VALIDATION_CHECKLIST.md](../config/ai/AGENT_VALIDATION_CHECKLIST.md) và tick từng mục tương ứng với file bạn thay đổi:
+- Viết Fragment → Fragment Checklist (9 mục)
+- Viết Page → Page Object Checklist (6 mục)
+- Viết Steps → Step Object Checklist (6 mục)
+- Viết API Service → API Service Checklist (8 mục)
+
+```bash
 git add <files bạn thay đổi>
 git commit -m "feat(ui): add SearchBarFragment"
 ```

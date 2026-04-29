@@ -14,7 +14,7 @@ import { globalTeardown } from './src/hooks/globalTeardown';
  */
 let healEngineInstance: SelfHealEngine | null = null;
 const getHealEngine = (): SelfHealEngine => {
-  if (!healEngineInstance) healEngineInstance = new SelfHealEngine();
+  healEngineInstance ??= new SelfHealEngine();
   return healEngineInstance;
 };
 
@@ -69,7 +69,6 @@ export const config: CodeceptJS.MainConfig = {
     // --- Step Objects (business-level workflows) ---
     authSteps: './src/ui/steps/AuthSteps.ts',
     landingSteps: './src/ui/steps/LandingSteps.ts',
-    registerSteps: './src/ui/steps/RegisterSteps.ts',
     listRegisterSteps: './src/ui/steps/ListRegisterSteps.ts',
     findAListSteps: './src/ui/steps/FindAListSteps.ts',
     // --- Landing page (registered for direct use in integration tests) ---

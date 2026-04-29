@@ -1,15 +1,52 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules/
+
+# ── Build output ──────────────────────────────────────────────────────────────
 dist/
+
+# ── Test / AI runtime artifacts ───────────────────────────────────────────────
+# All runtime output: screenshots, videos, traces, Allure reports,
+# heal cache (SQLite), codegen cache (SQLite), LLM cost logs, heal events.
 output/
+
+# SQLite safety net: catch any *.db files created outside output/ (e.g. from a
+# test run invoked from a non-standard working directory).
+*.db
+
+# Visual diff images are written to output/visual-diffs/ by VisualComparator.
+# This rule is a safety net in case a script ever writes them to src/visual/diffs/.
+src/visual/diffs/*.png
+
+# NOTE: src/visual/baselines/*.png is INTENTIONALLY tracked — CI needs the
+# baseline images to run visual comparison tests. Do NOT add baselines here.
+
+# ── Environment files ─────────────────────────────────────────────────────────
 .env
 .env.dev
 .env.staging
 .env.prod
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
+
+# ── OS artifacts ──────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
 .vscode/*
 !.vscode/settings.json
 !.vscode/launch.json
+
+# ── Coverage ──────────────────────────────────────────────────────────────────
 coverage/
 .nyc_output/
+
+# ── AI assistant tooling ──────────────────────────────────────────────────────
+# Claude Code session files and Context7 cache — machine-specific, not project artifacts.
+.claude.json
+.context7/
+
+# AI development playbooks generated during the build session.
+# These contain local machine paths and Claude-specific instructions.
+IMPLEMENTATION_GUIDE.md
