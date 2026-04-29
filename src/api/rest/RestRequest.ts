@@ -1,8 +1,6 @@
 import { RestMethod } from './RestMethod';
 import { RestHeaders, RestQueryParams } from './types';
 
-export type AuthScheme = 'bearer' | 'basic' | 'apikey' | null;
-
 export class RestRequest {
   constructor(
     public readonly url: string,
@@ -12,7 +10,6 @@ export class RestRequest {
     public readonly body?: unknown,
     public readonly timeout: number = 30000,
     public readonly followRedirects: boolean = true,
-    public readonly authScheme: AuthScheme = null,
   ) {}
 
   buildUrl(): string {
