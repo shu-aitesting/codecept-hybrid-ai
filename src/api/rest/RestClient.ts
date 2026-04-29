@@ -9,8 +9,14 @@ function log(msg: string): void {
   if (DEBUG) console.log(`[RestClient] ${msg}`);
 }
 
+export interface RestClientOptions {
+  onResponse?: (req: RestRequest, res: RestResponse) => void;
+}
+
 export class RestClient {
   private context?: APIRequestContext;
+
+  constructor(private readonly opts: RestClientOptions = {}) {}
 
   async init(baseURL?: string): Promise<void> {
     this.context = await request.newContext({
@@ -55,6 +61,8 @@ export class RestClient {
     }
 
     log(`← ${response.status()} (${durationMs}ms)`);
-    return new RestResponse<T>(response.status(), headers, body, durationMs);
+    const restRes = new RestResponse<T>(response.status(), headers, body, durationMs);
+    this.opts.onResponse?.(req, restRes);
+    return restRes;
   }
 }

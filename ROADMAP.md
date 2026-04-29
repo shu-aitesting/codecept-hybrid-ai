@@ -444,13 +444,13 @@ Trong test chỉ cần `I.loginAs('admin')` — không care low-level locators.
 |---|---|
 | Bước 1-2 | `npx tsc --noEmit` pass, `npm run lint` pass, git commit trigger hook |
 | Bước 3-4 | `npx codeceptjs run` chạy được 1 dummy test, đổi `ENV=dev/prod` load đúng config |
-| Bước 5 | Viết 1 API test `GET /users` → assert status 200 + schema |
+| Bước 5 | Viết 1 API test `GET /users` → assert status 200 + schema | ✅ Done — RestResponse extended (schema validation, SLA, content-type, array assertions), Zod schemas, Allure attachment, CurlConverter query/auth improvements |
 | Bước 6-7 | Test login dùng Fragment `LoginFormFragment` + Step `I.loginAs('admin')` → pass |
 | Bước 8 | Chạy visual test 2 lần → lần 2 so với baseline → generate diff khi có thay đổi CSS |
 | Bước 9 | Fail 1 test cố ý → thấy screenshot + video + trace + Allure report |
 | Bước 10 | Chạy test với AI-generated data → data match schema, deterministic trên 2 lần chạy |
 | Bước 11 | Đổi locator ở UI → test vẫn pass nhờ heal plugin, `heal-report.json` ghi lại |
-| Bước 12 | `npm run gen:page -- --url <demo>` → tạo file Fragment/Page/Test compile được |
+| Bước 12 | `npm run gen:page -- --url <demo>` → tạo file Fragment/Page/Test compile được | ✅ Done — CurlToApiAgent v2 (3-file output: schema+service+test), OpenApiSuiteAgent (bulk gen per tag), gen:suite CLI, gen-schemas-from-openapi script |
 | Bước 13 | Push PR → Jenkins build tự trigger, 2 parallel stages (chromium/firefox) xanh, Allure report hiển thị trên Jenkins build page |
 | Bước 14 | QA mới clone repo, làm theo ONBOARDING.md → chạy được test trong <1h |
 

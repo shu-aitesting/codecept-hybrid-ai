@@ -124,7 +124,7 @@ tests/ui/smoke/checkout.smoke.test.ts           ← test cơ bản
 
 ---
 
-### gen api — Service Object + Test từ cURL
+### gen api — Zod Schema + Service Object + Test từ cURL
 
 ```bash
 # Copy cURL từ browser DevTools → Network tab → chuột phải request → Copy as cURL
@@ -142,17 +142,95 @@ npm run gen:api -- --curl-file /tmp/create-order.curl --name Order
 npm run gen:api -- --curl 'curl ...' --name Order --dry-run
 ```
 
-**Output (2 files):**
+**Output (3 files):**
 
 ```
-src/api/services/OrderService.ts    ← service object với typed methods
-tests/api/smoke/order.test.ts       ← test cho happy path + error cases
+src/api/schemas/OrderSchema.ts      ← Zod schema cho request/response
+src/api/services/OrderService.ts    ← typed service object với RestResponse assertions
+tests/api/smoke/order.test.ts       ← test: happy path + schema validation + SLA + error cases
 ```
 
 **Sau khi gen:**
 1. `npm run typecheck`
 2. Điền base URL nếu service dùng endpoint khác `API_URL`
 3. `ENV=dev npm run test:api`
+
+---
+
+### schemas:gen — Zod schemas từ OpenAPI/Swagger spec
+
+```bash
+# Sinh schemas từ local spec file
+npm run schemas:gen -- --spec path/to/swagger.json
+
+# Từ URL
+npm run schemas:gen -- --spec https://api.example.com/openapi.json
+
+# Force re-generate (bỏ qua idempotency cache)
+npm run schemas:gen -- --spec swagger.json --force
+```
+
+**Output:**
+
+```
+src/api/schemas/_generated.ts   ← ALL schemas từ spec (AUTO-GENERATED — do not edit)
+src/api/schemas/index.ts        ← barrel re-export (cập nhật để include _generated)
+```
+
+**Idempotent:** SHA-256 hash của spec được lưu tại `src/api/schemas/.openapi-hash`. Re-run cùng spec → "Schema file is up-to-date", không re-generate.
+
+**Swagger 2.0 hỗ trợ:** tự động convert qua `swagger2openapi` trước khi xử lý.
+
+```bash
+# Sau khi gen, verify không có TypeScript lỗi
+npm run typecheck
+```
+
+---
+
+### gen:suite — Service classes + Test suite từ OpenAPI spec (bulk)
+
+```bash
+# Sinh toàn bộ suite (tất cả tags trong spec)
+npm run gen:suite -- --spec swagger.json
+
+# Chỉ sinh cho 1 số tags cụ thể
+npm run gen:suite -- --spec swagger.json --tags users,orders
+
+# Bỏ qua deprecated operations
+npm run gen:suite -- --spec swagger.json --exclude-deprecated
+
+# Preview không write files
+npm run gen:suite -- --spec swagger.json --dry-run
+
+# Filter path pattern
+npm run gen:suite -- --spec swagger.json --include-paths "/api/v2/*"
+```
+
+**Output (2 files per tag):**
+
+```
+src/api/services/_generated/UsersService.ts    ← deterministic (no LLM), typed methods
+tests/api/_generated/users.test.ts             ← LLM-generated scenarios per operation
+```
+
+**Mỗi operation có ≥3 test scenarios:**
+- `happy` — valid input, expectStatus 200/201
+- `schema` — expectMatchesSchema(ResponseSchema)
+- `sla` — expectResponseTime(2000)
+- `404` (GET với `{id}` path param) — invalid id
+- `400` (POST/PUT với required body) — missing field
+- `401` (secured endpoint) — no auth header
+
+**Cost estimate:** ~$0.25/run (5 tags × Sonnet), ~$0.05 sau prompt caching. Idempotent — re-run không gọi LLM nếu spec không đổi.
+
+**Workflow sau gen:**
+
+```bash
+npm run typecheck       # verify generated code compile OK
+# Review output trong _generated/
+# Promote file ra folder chính khi đã review và customise xong
+```
 
 ---
 
@@ -176,6 +254,25 @@ Prompt template được cấu hình để generate ít nhất:
 - 3 negative test cases
 - 2 boundary cases
 - Happy path
+
+---
+
+## API Attachment trong Allure
+
+`RestHelper` tự động attach request/response JSON vào mỗi Allure test case:
+
+```
+API Request — POST /users    { method, url, headers (redacted), body }
+API Response — 201 (123ms)   { status, durationMs, headers, body }
+```
+
+Headers nhạy cảm (Authorization, Cookie, X-Api-Key) tự động bị thay bằng `***redacted***`.
+
+**Tắt attachment** (hữu ích khi cần performance trong CI):
+
+```bash
+ATTACH_API_TO_REPORT=false npm run test:api
+```
 
 ---
 
