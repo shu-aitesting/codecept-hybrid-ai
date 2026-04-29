@@ -16,6 +16,7 @@ export interface CurlToApiInput {
 }
 
 const outputSchema = z.object({
+  schemaTs: z.string().min(1),
   serviceTs: z.string().min(1),
   testTs: z.string().min(1),
 });
@@ -60,11 +61,14 @@ function buildConfig(deps: AgentDeps): PipelineConfig<CurlToApiInput, CurlToApiO
         url: req.url,
         headers: JSON.stringify(req.headers),
         body: req.body ? JSON.stringify(req.body) : '{}',
+        authScheme: req.authScheme ?? 'none',
         endpointDescription: inferEndpointDescription(req.method, req.url),
       };
     },
 
     outputMapper: (input, files) => ({
+      [path.join(input.outputDir, 'schemas', `${input.serviceName.toLowerCase()}.schema.ts`)]:
+        files.schemaTs,
       [path.join(input.outputDir, 'services', `${input.serviceName}Service.ts`)]: files.serviceTs,
       [path.join(
         process.cwd(),
