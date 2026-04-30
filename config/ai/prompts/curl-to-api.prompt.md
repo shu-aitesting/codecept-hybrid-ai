@@ -6,10 +6,12 @@ examples:
       serviceName: User
       method: POST
       url: https://api.example.com/users
+      baseUrl: https://api.example.com
+      endpoint: /users
       headers: "{\"Accept\":\"application/json\",\"Accept-Language\":\"en-US,en;q=0.9\"}"
       body: "{\"name\":\"Alice\",\"email\":\"alice@example.com\"}"
       endpointDescription: "Create a new user account"
-    output: {"serviceTs":"import { RestClient } from '@api/rest/RestClient';\nimport { RestRequestBuilder } from '@api/rest/RestRequestBuilder';\n\nexport interface CreateUserRequest {\n  name: string;\n  email: string;\n}\n\nexport class UserService {\n  constructor(private readonly client: RestClient) {}\n\n  async createUser(params: CreateUserRequest) {\n    const req = new RestRequestBuilder()\n      .post('https://api.example.com/users')\n      .header('Accept', 'application/json')\n      .header('Accept-Language', 'en-US,en;q=0.9')\n      .json(params)\n      .build();\n    return this.client.send(req);\n  }\n}\n","testTs":"import { UserService } from '@api/services/UserService';\nimport { RestClient } from '@api/rest/RestClient';\n\nFeature('User API').tag('@api').tag('@regression');\n\nlet client: RestClient;\nlet svc: UserService;\n\nBefore(async () => {\n  client = new RestClient();\n  await client.init();\n  svc = new UserService(client);\n});\n\nAfter(async () => {\n  await client.dispose();\n});\n\nScenario('Creates user successfully', async () => {\n  const res = await svc.createUser({ name: 'Alice', email: 'alice@example.com' });\n  res.expectStatus(201);\n}).tag('@smoke');\n\nScenario('Returns 400 for missing name', async () => {\n  const res = await svc.createUser({ name: '', email: 'alice@example.com' });\n  res.expectStatus(400);\n}).tag('@negative');\n\nScenario('Returns 400 for missing email', async () => {\n  const res = await svc.createUser({ name: 'Alice', email: '' });\n  res.expectStatus(400);\n}).tag('@negative');\n"}
+    output: {"serviceTs":"import { config } from '@core/config/ConfigLoader';\n\nimport { RestClient } from '@api/rest/RestClient';\nimport { RestRequestBuilder } from '@api/rest/RestRequestBuilder';\n\nconst USER_ENDPOINT = '/users';\n\nexport interface CreateUserRequest {\n  name: string;\n  email: string;\n}\n\nexport interface CreateUserResponse {\n  id: number;\n  name: string;\n  email: string;\n}\n\nexport class UserService {\n  constructor(private readonly client: RestClient) {}\n\n  async createUser(params: CreateUserRequest) {\n    const req = new RestRequestBuilder()\n      .post(`${config.apiUrl}${USER_ENDPOINT}`)\n      .header('Accept', 'application/json')\n      .header('Accept-Language', 'en-US,en;q=0.9')\n      .json(params)\n      .build();\n    return this.client.send<CreateUserResponse>(req);\n  }\n}\n","testTs":"import { UserService, CreateUserRequest } from '@api/services/UserService';\nimport { RestClient } from '@api/rest/RestClient';\n\nFeature('User API').tag('@api').tag('@regression');\n\nlet client: RestClient;\nlet svc: UserService;\n\nBefore(async () => {\n  client = new RestClient();\n  await client.init();\n  svc = new UserService(client);\n});\n\nAfter(async () => {\n  await client.dispose();\n});\n\nScenario('Creates user successfully', async () => {\n  const res = await svc.createUser({ name: 'Alice', email: 'alice@example.com' });\n  res.expectStatus(201);\n}).tag('@smoke');\n\nScenario('Returns 400 for missing name', async () => {\n  const res = await svc.createUser({ name: '', email: 'alice@example.com' });\n  res.expectStatus(400);\n}).tag('@negative');\n\nScenario('Returns 400 for missing email', async () => {\n  const res = await svc.createUser({ name: 'Alice', email: '' });\n  res.expectStatus(400);\n}).tag('@negative');\n"}
 ---
 You are a TypeScript + CodeceptJS API test-automation expert. Given a parsed HTTP request, generate two files:
 1. **Service** — a typed service class wrapping the endpoint with `RestClient` + `RestRequestBuilder`.
@@ -17,27 +19,37 @@ You are a TypeScript + CodeceptJS API test-automation expert. Given a parsed HTT
 
 ## Service rules
 - Class named `{{{serviceName}}}Service`, lives in `src/api/services/`.
-- Extract request body fields into a typed `interface` (e.g. `interface {{{serviceName}}}Request { ... }`).
-- Use HTTP method shorthands: `.post(url)`, `.get(url)`, `.put(url)`, `.patch(url)`, `.delete(url)` — NOT `.url().method(RestMethod.*)`.
-- Use `.json(params)` for JSON bodies (auto-sets Content-Type header) — NOT `.body()`.
+- **URL construction**: define a `const {RESOURCE}_ENDPOINT = '{{{endpoint}}}';` constant for the path segment, then compose the full URL as `` `${config.apiUrl}${RESOURCE_ENDPOINT}` ``. Import `config` from `@core/config/ConfigLoader`. NEVER hardcode absolute URLs.
+- Extract request body fields into a typed `interface {{{serviceName}}}Request { ... }`.
+- Define a typed `interface {{{serviceName}}}Response { ... }` for the expected response shape (infer fields from the endpoint description and method).
+- Use HTTP method shorthands: `.post(url)`, `.get(url)`, `.put(url)`, `.patch(url)`, `.delete(url)`.
+- Use `.json(params)` for JSON bodies (auto-sets Content-Type) — NOT `.body()`.
+- Pass the response type generic to `client.send<{{{serviceName}}}Response>(req)`.
 - Only include headers from the parsed request that matter for the API (skip browser fingerprinting: `sec-ch-ua`, `sec-ch-ua-mobile`, `sec-ch-ua-platform`, `sec-fetch-*`, `user-agent`, `priority`).
 - Only add an `Authorization` header if the parsed request contains one.
-- Do NOT import `RestMethod` unless explicitly needed for a reason other than setting the HTTP verb.
-- If negative scenarios require varying a URL path segment (e.g. a slug or ID), add a typed optional parameter to the service method (e.g. `getBySlug(slug = 'default-slug')`) so the test can call it with a different value — do NOT expose `RestRequestBuilder` to the test layer.
+- Do NOT import `RestMethod` unless needed for something other than setting the HTTP verb.
+- If negative scenarios require varying a URL path segment (e.g. a slug or ID), add a typed optional parameter to the service method — do NOT expose `RestRequestBuilder` to the test layer.
 
 ## Test rules
-- Import from `@api/services/{{{serviceName}}}Service` and `@api/rest/RestClient`.
-- **Never import or instantiate `RestRequestBuilder` directly in the test file.** All HTTP calls must go through the service instance (`svc`). If a negative scenario requires a different URL segment or parameter, add a new typed method to the service class instead.
-- Use `Feature('... API').tag('@api').tag('@regression')` — tags on Feature, NOT inline in Scenario title.
-- Add `.tag('@smoke')` only to the happy-path Scenario (chained after the callback).
-- Add `.tag('@negative')` to error Scenarios (chained after the callback).
+- Import `{{{serviceName}}}Service` and any request types from `@api/services/{{{serviceName}}}Service`, and `RestClient` from `@api/rest/RestClient`.
+- **Never import or instantiate `RestRequestBuilder` in the test file.** All HTTP calls go through the service instance (`svc`).
+- Use `Feature('... API').tag('@api').tag('@regression')`.
+- Tags are **chained** after the callback: `.tag('@smoke')`, `.tag('@negative')`.
 - Assertions use `res.expectStatus(code)` — NOT `I.assertEqual`, NOT `expect().toBe()`.
 - Scenarios do NOT need `({ I })` unless calling `I.*` methods.
 - Do NOT test auth errors unless the parsed curl has an `Authorization` header.
-- Test file lives in `tests/api/regression/`.
-- Every class, type, or symbol used in the test file MUST have a corresponding import at the top of the file.
-- **Lifecycle**: declare `let client: RestClient` and `let svc: {{{serviceName}}}Service` at module scope. In `Before`, call `await client.init()` before passing client to the service. In `After`, call `await client.dispose()` to release the Playwright context.
+- Test file lives in `tests/api/smoke/`.
+- Every symbol used in the test file MUST have a corresponding import at the top.
+- **Lifecycle**: declare `let client: RestClient` and `let svc: {{{serviceName}}}Service` at module scope. In `Before`, call `await client.init()` then pass `client` to the service constructor. In `After`, call `await client.dispose()`.
 
+{{#goldenServiceTs}}
+## Golden reference — Service (follow this pattern exactly)
+
+```typescript
+{{{goldenServiceTs}}}
+```
+
+{{/goldenServiceTs}}
 ## Output
 Return a JSON object exactly matching: `{ "serviceTs": string, "testTs": string }`. No markdown, no commentary.
 
@@ -47,6 +59,8 @@ Service name: {{{serviceName}}}
 Parsed request:
 - Method: {{{method}}}
 - URL: {{{url}}}
+- Base URL: {{{baseUrl}}}
+- Endpoint path: {{{endpoint}}}
 - Headers: {{{headers}}}
 - Body: {{{body}}}
 - Endpoint description: {{{endpointDescription}}}

@@ -10,6 +10,7 @@ import { DomSanitizer } from '../utils/DomSanitizer';
 import { FragmentSegmenter } from './FragmentSegmenter';
 import { GenerationCache } from './GenerationCache';
 import { GenerationPipeline, PipelineConfig, RunOpts } from './GenerationPipeline';
+import { GoldenExampleLoader } from './GoldenExampleLoader';
 import { scoreElementInContext } from './LocatorScorer';
 
 export interface HtmlToFragmentInput {
@@ -36,6 +37,7 @@ interface AgentDeps {
   pipeline?: GenerationPipeline<HtmlToFragmentInput, HtmlToFragmentOutput>;
   sanitizer?: DomSanitizer;
   segmenter?: FragmentSegmenter;
+  goldenLoader?: GoldenExampleLoader;
   postValidate?: (files: HtmlToFragmentOutput) => Promise<string[]>;
 }
 
@@ -67,6 +69,7 @@ function buildConfig(
   deps: AgentDeps,
   sanitizer: DomSanitizer,
   segmenter: FragmentSegmenter,
+  goldenLoader: GoldenExampleLoader,
 ): PipelineConfig<HtmlToFragmentInput, HtmlToFragmentOutput> {
   return {
     agentName: 'html-to-fragment',
@@ -108,6 +111,8 @@ function buildConfig(
         elements,
         segments: JSON.stringify(segments),
         hasSegments: segments.length > 0,
+        goldenFragmentTs: goldenLoader.load('fragment'),
+        goldenStepsTs: goldenLoader.load('steps'),
       };
     },
 
@@ -158,7 +163,8 @@ export class HtmlToFragmentAgent {
   constructor(deps: AgentDeps = {}) {
     const sanitizer = deps.sanitizer ?? new DomSanitizer();
     const segmenter = deps.segmenter ?? new FragmentSegmenter();
-    const config = buildConfig(deps, sanitizer, segmenter);
+    const goldenLoader = deps.goldenLoader ?? new GoldenExampleLoader();
+    const config = buildConfig(deps, sanitizer, segmenter, goldenLoader);
     this.pipeline =
       deps.pipeline ??
       new GenerationPipeline(config, {

@@ -18,7 +18,7 @@ class FindAListSteps {
   }
 
   async verifyFaqSectionVisible(): Promise<void> {
-    this.I.seeElement(this.page.main.selectors.faqAccordion);
+    await this.page.main.verifyFaqVisible();
   }
 }
 

@@ -14,7 +14,7 @@ import { globalTeardown } from './src/hooks/globalTeardown';
  */
 let healEngineInstance: SelfHealEngine | null = null;
 const getHealEngine = (): SelfHealEngine => {
-  if (!healEngineInstance) healEngineInstance = new SelfHealEngine();
+  healEngineInstance ??= new SelfHealEngine();
   return healEngineInstance;
 };
 
@@ -55,6 +55,26 @@ export const config: CodeceptJS.MainConfig = {
       require: '@codeceptjs/expect-helper',
     },
     FileSystem: {},
+    ApiDataFactory: {
+      endpoint: appConfig.apiUrl,
+      cleanup: true,
+      // returnId: true → I.have() returns the id string directly instead of the full response object.
+      // Keep false (default) so tests can access all fields (e.g. user.email) after creation.
+      returnId: false,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      factories: {
+        user: {
+          // uri is required — ApiDataFactory derives POST /users and DELETE /users/{id} from it.
+          uri: '/users',
+          factory: './src/fixtures/factories/UserApiFactory.ts',
+          // fetchId: (data) => data.id  ← override only if your API wraps id differently,
+          // e.g. (data) => data.result.id or (data) => data.data.userId
+        },
+      },
+    },
   },
   include: {
     I: './steps_file.ts',
@@ -69,7 +89,6 @@ export const config: CodeceptJS.MainConfig = {
     // --- Step Objects (business-level workflows) ---
     authSteps: './src/ui/steps/AuthSteps.ts',
     landingSteps: './src/ui/steps/LandingSteps.ts',
-    registerSteps: './src/ui/steps/RegisterSteps.ts',
     listRegisterSteps: './src/ui/steps/ListRegisterSteps.ts',
     findAListSteps: './src/ui/steps/FindAListSteps.ts',
     // --- Landing page (registered for direct use in integration tests) ---

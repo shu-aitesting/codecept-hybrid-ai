@@ -1,0 +1,4 @@
+{
+  "admin": { "email": "admin@example.com", "password": "Admin@123", "role": "admin" },
+  "customer": { "email": "user@example.com", "password": "User@123", "role": "customer" }
+}

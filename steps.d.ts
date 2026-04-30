@@ -15,6 +15,7 @@ type RestHelper = import('./src/core/helpers/RestHelper');
 type VisualHelper = import('./src/core/helpers/VisualHelper');
 type ExpectHelper = import('@codeceptjs/expect-helper');
 type FileSystem = import('codeceptjs/lib/helper/FileSystem');
+type ApiDataFactory = import('codeceptjs/lib/helper/ApiDataFactory');
 type CustomSteps = import('./src/types/custom-steps').CustomSteps;
 type findAListSteps = typeof import('./src/ui/steps/FindAListSteps');
 
@@ -35,7 +36,8 @@ declare namespace CodeceptJS {
     findAListSteps: findAListSteps;
     landingPage: landingPage;
   }
-  interface Methods extends Playwright, REST, RestHelper, VisualHelper, ExpectHelper, FileSystem {}
+  interface Methods
+    extends Playwright, REST, RestHelper, VisualHelper, ExpectHelper, FileSystem, ApiDataFactory {}
   interface I extends ReturnType<steps_file>, WithTranslation<Methods>, CustomSteps {}
   namespace Translation {
     interface Actions {}

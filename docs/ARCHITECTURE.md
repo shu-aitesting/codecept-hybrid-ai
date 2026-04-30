@@ -53,25 +53,28 @@ Ví dụ `LoginFormFragment`:
 ```
 root = '[data-testid="login-form"]'
 
-Selectors (đọc từ DOM thật):
-  email         → input[name="email"]
-  password      → input[name="password"]
-  submit        → button[type="submit"]
-  errorMsg      → .error-message
-  rememberMe    → input[name="remember"]
-  forgotPassword → [data-testid="forgot-password"]
+readonly selectors = { ... } as const   ← immutable, literal-typed, không thể bị mutate
+  email         → 'input[name="email"]'
+  password      → 'input[name="password"]'
+  submit        → 'button[type="submit"]'
+  errorMsg      → '.error-message'
+  rememberMe    → 'input[name="remember"]'
+  forgotPassword → '[data-testid="forgot-password"]'
 
 Methods:
-  fillCredentials(email, password)   ← gọi I.fillField trong within(root)
-  submit()                           ← click submit trong within(root)
+  fillCredentials(email, password)   ← gọi I.fillField trong await within(root)
+  submit()                           ← click submit trong await within(root)
   getError()                         ← grab errorMsg text
-  checkRememberMe()                  ← check checkbox
+  checkRememberMe()                  ← check checkbox trong await within(root)
   clickForgotPassword()
+  verifyErrorVisible()               ← assertion method — Step Object gọi cái này
 ```
 
 **Nguyên tắc thiết kế Fragment:**
-- Không bao giờ gọi `I.fillField(locator)` với locator viết thẳng trong test — luôn thông qua Fragment method.
-- `within(root, fn)` đảm bảo mọi interaction được scoped vào container → tránh chọn nhầm element trùng selector ở trang khác.
+- `readonly selectors = { ... } as const` — bắt buộc. Selector là literal string constant, không thể bị reassign.
+- Mọi fragment method cần assertion ngoài phải có `async verify*(): Promise<void>` riêng — **Step Object và Test không được truy cập `.selectors` trực tiếp**.
+- `await this.within(fn)` đảm bảo mọi interaction được scoped vào container → tránh chọn nhầm element trùng selector ở trang khác. `BaseFragment.within()` trả về `Promise<void>` nên bắt buộc phải `await`.
+- `this.I.click()`, `this.I.fillField()`, `this.I.waitForElement()` **không cần `await`** — CodeceptJS type chúng là `void` (queue nội bộ). Chỉ `await` khi gọi `grabTextFrom`, `grabNumberOfVisibleElements` và các method trả về giá trị.
 - Locators là class property (string) — khi cần sửa chỉ sửa 1 chỗ.
 
 ---
@@ -203,9 +206,16 @@ flowchart LR
   Validate -- "Fail" --> Retry
 ```
 
+**Output per agent:**
+- `HtmlToFragmentAgent` → `fragments/*.ts` + `pages/*.ts` + `steps/*.ts` + `tests/ui/smoke/*.test.ts`
+- `CurlToApiAgent` → `services/*Service.ts` (dùng `config.apiUrl` + relative endpoint) + `tests/api/smoke/*.test.ts`
+- `ScenarioGeneratorAgent` → `tests/ui/regression/*.test.ts` (CodeceptJS format) + `src/ui/steps/*Steps.ts` (Step Object)
+
 **HtmlToFragmentAgent** thêm bước pre-processing:
 1. `DomSanitizer` — rút gọn HTML
 2. `LocatorScorer` — rank top-5 candidates (data-testid → id → text → attr) trước khi feed LLM → LLM chỉ cần đặt tên + tổ chức, không cần "đoán" selector
+
+Xem [config/ai/AGENT_VALIDATION_CHECKLIST.md](../config/ai/AGENT_VALIDATION_CHECKLIST.md) để biết tiêu chuẩn agent phải đạt trước khi ghi file.
 
 ---
 

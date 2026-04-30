@@ -8,6 +8,7 @@ import { RestMethod } from '../../api/rest/RestMethod';
 
 import { GenerationCache } from './GenerationCache';
 import { GenerationPipeline, PipelineConfig, RunOpts } from './GenerationPipeline';
+import { GoldenExampleLoader } from './GoldenExampleLoader';
 
 export interface CurlToApiInput {
   curl: string;
@@ -24,6 +25,7 @@ export type CurlToApiOutput = z.infer<typeof outputSchema>;
 
 interface AgentDeps {
   pipeline?: GenerationPipeline<CurlToApiInput, CurlToApiOutput>;
+  goldenLoader?: GoldenExampleLoader;
   postValidate?: (files: CurlToApiOutput) => Promise<string[]>;
 }
 
@@ -43,7 +45,10 @@ function inferEndpointDescription(method: RestMethod, url: string): string {
   return `${verbMap[method] ?? 'Interact with'} ${resource}`;
 }
 
-function buildConfig(deps: AgentDeps): PipelineConfig<CurlToApiInput, CurlToApiOutput> {
+function buildConfig(
+  deps: AgentDeps,
+  goldenLoader: GoldenExampleLoader,
+): PipelineConfig<CurlToApiInput, CurlToApiOutput> {
   return {
     agentName: 'curl-to-api',
     promptTemplate: 'curl-to-api',
@@ -54,13 +59,19 @@ function buildConfig(deps: AgentDeps): PipelineConfig<CurlToApiInput, CurlToApiO
 
     contextBuilder: async (input) => {
       const req = CurlConverter.fromCurl(input.curl);
+      const parsedUrl = new URL(req.url);
+      const baseUrl = parsedUrl.origin;
+      const endpoint = parsedUrl.pathname + (parsedUrl.search || '');
       return {
         serviceName: input.serviceName,
         method: req.method,
         url: req.url,
+        baseUrl,
+        endpoint,
         headers: JSON.stringify(req.headers),
         body: req.body ? JSON.stringify(req.body) : '{}',
         endpointDescription: inferEndpointDescription(req.method, req.url),
+        goldenServiceTs: goldenLoader.load('service'),
       };
     },
 
@@ -88,7 +99,8 @@ export class CurlToApiAgent {
   private readonly pipeline: GenerationPipeline<CurlToApiInput, CurlToApiOutput>;
 
   constructor(deps: AgentDeps = {}) {
-    const config = buildConfig(deps);
+    const goldenLoader = deps.goldenLoader ?? new GoldenExampleLoader();
+    const config = buildConfig(deps, goldenLoader);
     this.pipeline =
       deps.pipeline ??
       new GenerationPipeline(config, {

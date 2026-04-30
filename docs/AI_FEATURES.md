@@ -151,31 +151,35 @@ tests/api/smoke/order.test.ts       ← test cho happy path + error cases
 
 **Sau khi gen:**
 1. `npm run typecheck`
-2. Điền base URL nếu service dùng endpoint khác `API_URL`
+2. Service tự dùng `config.apiUrl` + relative endpoint — không cần điền URL thủ công
 3. `ENV=dev npm run test:api`
 
 ---
 
-### gen scenario — Test scenarios từ mô tả
+### gen scenario — CodeceptJS test + Step Object từ User Story
 
 ```bash
-npm run gen:scenario -- --description "User đăng nhập với email sai thì thấy thông báo lỗi"
+npm run gen:scenario -- --story "As a user I want to log in with email and password so I can access my account" --name Login
 
-# Mô tả chi tiết hơn → output tốt hơn
-npm run gen:scenario -- --description \
-  "Checkout flow: user thêm sản phẩm vào cart, nhập địa chỉ giao hàng, chọn phương thức thanh toán, và hoàn thành đơn hàng"
+# User story chi tiết hơn → output tốt hơn
+npm run gen:scenario -- --story \
+  "As a shopper, I want to add a product to cart and complete checkout so I can purchase items" \
+  --name Checkout
 ```
 
-**Output:**
+**Output (2 files):**
 
 ```
-tests/ui/regression/<scenario-name>.test.ts
+tests/ui/regression/<kebab-name>.test.ts   ← CodeceptJS Feature()/Scenario() format, tagged .tag('@smoke')/.tag('@negative')
+src/ui/steps/<Name>Steps.ts               ← Step Object skeleton (class + export = new X())
 ```
 
 Prompt template được cấu hình để generate ít nhất:
-- 3 negative test cases
-- 2 boundary cases
-- Happy path
+- 1 happy path scenario (`.tag('@smoke')`)
+- 3 negative test cases (`.tag('@negative')`)
+- 2 boundary cases (`.tag('@negative')`)
+
+**Lưu ý:** Output là CodeceptJS TypeScript, không phải Gherkin `.feature`. Step Object skeleton cần review để đảm bảo các method delegate đúng đến fragment methods (không truy cập `.selectors` trực tiếp).
 
 ---
 

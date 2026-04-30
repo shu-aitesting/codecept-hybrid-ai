@@ -1,0 +1,23 @@
+[
+  {
+    "id": "prod-001",
+    "name": "Classic Dinner Set",
+    "sku": "CDS-001",
+    "price": 129.99,
+    "category": "tableware"
+  },
+  {
+    "id": "prod-002",
+    "name": "Modern Wine Glass Set",
+    "sku": "MWG-002",
+    "price": 79.99,
+    "category": "glassware"
+  },
+  {
+    "id": "prod-003",
+    "name": "Luxury Cutlery Collection",
+    "sku": "LCC-003",
+    "price": 199.99,
+    "category": "cutlery"
+  }
+]

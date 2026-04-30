@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { GenerationCache } from '../../../../src/ai/codegen/GenerationCache';
-import { GenerationFailedError, GenerationPipeline } from '../../../../src/ai/codegen/GenerationPipeline';
+import {
+  GenerationFailedError,
+  GenerationPipeline,
+} from '../../../../src/ai/codegen/GenerationPipeline';
 import {
   ScenarioGeneratorAgent,
   ScenarioGeneratorInput,
@@ -28,45 +31,73 @@ const outputSchema = z.object({
 
 const VALID_OUTPUT = JSON.stringify({
   featureFile: [
-    'Feature: Registration',
+    "Feature('Registration').tag('@ui').tag('@regression');",
     '',
-    '  Scenario: happy path',
-    '    Given I am on the page',
-    '    When I submit',
-    '    Then I see success',
+    "Scenario('Successful registration', async ({ I, registrationSteps }) => {",
+    '  await registrationSteps.navigateToRegistration();',
+    "  await registrationSteps.fillForm('user@example.com', 'Password1!');",
+    '  await registrationSteps.submit();',
+    "  I.see('Welcome');",
+    "}).tag('@smoke');",
     '',
-    '  Scenario: invalid email',
-    '    Given I am on the page',
-    '    When I enter bad email',
-    '    Then I see error',
+    "Scenario('Fails with existing email', async ({ I, registrationSteps }) => {",
+    '  await registrationSteps.navigateToRegistration();',
+    "  await registrationSteps.fillForm('existing@example.com', 'Password1!');",
+    '  await registrationSteps.submit();',
+    "  I.see('Email already in use');",
+    "}).tag('@negative');",
     '',
-    '  Scenario: empty password',
-    '    Given I am on the page',
-    '    When I leave password empty',
-    '    Then I see validation',
+    "Scenario('Fails with invalid email format', async ({ registrationSteps }) => {",
+    '  await registrationSteps.navigateToRegistration();',
+    "  await registrationSteps.fillForm('not-an-email', 'Password1!');",
+    '  await registrationSteps.submit();',
+    '  await registrationSteps.verifyEmailError();',
+    "}).tag('@negative');",
     '',
-    '  Scenario: duplicate email',
-    '    Given I am on the page',
-    '    When I enter existing email',
-    '    Then I see already exists',
+    "Scenario('Fails with password too short', async ({ I, registrationSteps }) => {",
+    '  await registrationSteps.navigateToRegistration();',
+    "  await registrationSteps.fillForm('user@example.com', 'abc');",
+    '  await registrationSteps.submit();',
+    "  I.see('Password must be at least 8 characters');",
+    "}).tag('@negative');",
     '',
-    '  Scenario: server error',
-    '    Given server fails',
-    '    When I submit',
-    '    Then I see friendly error',
+    "Scenario('Fails with empty email', async ({ I, registrationSteps }) => {",
+    '  await registrationSteps.navigateToRegistration();',
+    "  await registrationSteps.fillForm('', 'Password1!');",
+    '  await registrationSteps.submit();',
+    "  I.see('Email is required');",
+    "}).tag('@negative');",
     '',
-    '  Scenario: max length password',
-    '    Given I am on the page',
-    '    When I enter 300 char password',
-    '    Then I see validation',
+    "Scenario('Fails with empty password', async ({ I, registrationSteps }) => {",
+    '  await registrationSteps.navigateToRegistration();',
+    "  await registrationSteps.fillForm('user@example.com', '');",
+    '  await registrationSteps.submit();',
+    "  I.see('Password is required');",
+    "}).tag('@negative');",
   ].join('\n'),
-  stepsTs: 'Given("I am on the page", async () => { await I.amOnPage("/register"); });',
+  stepsTs: [
+    "import { RegistrationPage } from '../pages/RegistrationPage';",
+    '',
+    'class RegistrationSteps {',
+    '  private readonly page = new RegistrationPage();',
+    '  protected get I(): CodeceptJS.I { return inject().I; }',
+    '  async navigateToRegistration(): Promise<void> { await this.page.open(); }',
+    '  async fillForm(email: string, password: string): Promise<void> {',
+    '    await this.page.form.fillCredentials(email, password);',
+    '  }',
+    '  async submit(): Promise<void> { await this.page.form.submit(); }',
+    '  async verifyEmailError(): Promise<void> { await this.page.form.verifyEmailError(); }',
+    '}',
+    'export = new RegistrationSteps();',
+  ].join('\n'),
 });
 
 function makeRouter(mock: MockProvider) {
   const costMeter = new CostMeter({ filePath: path.join(os.tmpdir(), `cost-${Date.now()}.jsonl`) });
   const budgetGuard = new BudgetGuard({ costMeter, maxDailyUsd: 999 });
-  const rateLimit = new RateLimitTracker({ filePath: path.join(os.tmpdir(), `rl-${Date.now()}.json`) });
+  const rateLimit = new RateLimitTracker({
+    filePath: path.join(os.tmpdir(), `rl-${Date.now()}.json`),
+  });
   return new TaskAwareRouter('codegen', {
     providers: { 'anthropic:sonnet': mock },
     costMeter,
@@ -126,7 +157,7 @@ describe('ScenarioGeneratorAgent', () => {
       featureName: 'Registration',
       outputDir: '/tmp',
     });
-    expect(result.featureFile).toContain('Feature:');
+    expect(result.featureFile).toContain('Feature(');
     expect(result.stepsTs).toBeTruthy();
   });
 
@@ -138,7 +169,7 @@ describe('ScenarioGeneratorAgent', () => {
       { userStory: STORY, featureName: 'Registration', outputDir: '/tmp' },
       { skipCache: true },
     );
-    const scenarioCount = (result.featureFile.match(/Scenario:/g) ?? []).length;
+    const scenarioCount = (result.featureFile.match(/\bScenario\(/g) ?? []).length;
     expect(scenarioCount).toBeGreaterThanOrEqual(6);
   });
 
@@ -150,7 +181,7 @@ describe('ScenarioGeneratorAgent', () => {
       ['simplefeature', 'simplefeature'],
     ];
     for (const [input, expected] of cases) {
-      const kebab = input.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+      const kebab = input.replaceAll(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
       expect(kebab).toBe(expected);
     }
   });
@@ -218,7 +249,10 @@ describe('ScenarioGeneratorAgent', () => {
     const agent = new ScenarioGeneratorAgent({ pipeline: makePipeline(mock, cache) });
 
     await expect(
-      agent.run({ userStory: '', featureName: 'EmptyStory', outputDir: '/tmp' }, { skipCache: true }),
+      agent.run(
+        { userStory: '', featureName: 'EmptyStory', outputDir: '/tmp' },
+        { skipCache: true },
+      ),
     ).resolves.toHaveProperty('featureFile');
   });
 
@@ -228,7 +262,10 @@ describe('ScenarioGeneratorAgent', () => {
     const agent = new ScenarioGeneratorAgent({ pipeline: makePipeline(mock, cache) });
 
     await expect(
-      agent.run({ userStory: longStory, featureName: 'LongStory', outputDir: '/tmp' }, { skipCache: true }),
+      agent.run(
+        { userStory: longStory, featureName: 'LongStory', outputDir: '/tmp' },
+        { skipCache: true },
+      ),
     ).resolves.toHaveProperty('featureFile');
   });
 
@@ -245,7 +282,12 @@ describe('ScenarioGeneratorAgent', () => {
         contextBuilder: async (i) => ({ featureName: i.featureName, userStory: i.userStory }),
         outputMapper: () => ({ [targetFile]: 'content' }),
       },
-      { router: makeRouter(mock), cache, prompts: new PromptLibrary(), parser: new StructuredOutputParser() },
+      {
+        router: makeRouter(mock),
+        cache,
+        prompts: new PromptLibrary(),
+        parser: new StructuredOutputParser(),
+      },
     );
 
     const agent = new ScenarioGeneratorAgent({ pipeline });

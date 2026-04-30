@@ -118,9 +118,9 @@ codecept-hybrid/
 |---|---|
 | `npm run test:ui:ai` | Bật `AI_HEAL_ENABLED=true`, chạy UI tests với self-healing |
 | `npm run heal:report` | Generate HTML dashboard từ `output/heal-events.jsonl` |
-| `npm run gen:page -- --url <URL> --name <Name>` | Generate Fragment + Page + Test từ URL |
-| `npm run gen:api -- --curl '<curl>' --name <Name>` | Generate Service + Test từ cURL |
-| `npm run gen:scenario -- --description '<mô tả>'` | Generate test scenario |
+| `npm run gen:page -- --url <URL> --name <Name>` | Generate Fragments + Page + Steps + Test từ URL |
+| `npm run gen:api -- --curl '<curl>' --name <Name>` | Generate Service (config.apiUrl + relative endpoint) + Test từ cURL |
+| `npm run gen:scenario -- --story '<user story>' --name <Name>` | Generate CodeceptJS test + Step Object từ user story |
 | `npm run codegen:report` | LLM cost breakdown (provider, tokens, $$$) |
 
 ### Reporting
@@ -202,4 +202,6 @@ Nightly regression: tự động 2am UTC (cấu hình trong `Jenkinsfile`).
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Hybrid pattern, AI flows, Mermaid diagrams
 - [docs/ONBOARDING.md](docs/ONBOARDING.md) — Kế hoạch 1 tuần cho QA mới
 - [docs/AI_FEATURES.md](docs/AI_FEATURES.md) — Self-healing, code generation, cost control
+- [docs/AI_CODEGEN.md](docs/AI_CODEGEN.md) — CLI reference đầy đủ cho gen:page / gen:api / gen:scenario
 - [docs/JENKINS_SETUP.md](docs/JENKINS_SETUP.md) — Setup Jenkins: plugins, credentials, webhook
+- [config/ai/AGENT_VALIDATION_CHECKLIST.md](config/ai/AGENT_VALIDATION_CHECKLIST.md) — Checklist quality gate cho mọi Fragment/Page/Steps/Service
