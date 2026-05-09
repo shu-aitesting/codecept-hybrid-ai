@@ -56,10 +56,14 @@ describe('TaskAwareRouter', () => {
   it('uses primary provider when it succeeds', async () => {
     const primary = new MockProvider({ fallback: 'ok' });
     const fallback = new MockProvider({ fallback: 'never' });
+    // heal profile: primary='cohere', fallback=['anthropic:haiku','g4f']
     const router = new TaskAwareRouter('heal', {
-      providers: { 'anthropic:haiku': primary, cohere: fallback, g4f: fallback },
+      providers: { cohere: primary, 'anthropic:haiku': fallback, g4f: fallback },
       costMeter: new CostMeter({ filePath: costFile }),
-      budgetGuard: new BudgetGuard({ costMeter: new CostMeter({ filePath: costFile }), maxDailyUsd: 1 }),
+      budgetGuard: new BudgetGuard({
+        costMeter: new CostMeter({ filePath: costFile }),
+        maxDailyUsd: 1,
+      }),
       rateLimit: new RateLimitTracker({ filePath: rateFile }),
     });
     const result = await router.chat([{ role: 'user', content: 'hi' }]);
@@ -74,7 +78,10 @@ describe('TaskAwareRouter', () => {
     const router = new TaskAwareRouter('heal', {
       providers: { 'anthropic:haiku': primary, cohere, g4f: new FailingProvider('g4f') },
       costMeter: new CostMeter({ filePath: costFile }),
-      budgetGuard: new BudgetGuard({ costMeter: new CostMeter({ filePath: costFile }), maxDailyUsd: 1 }),
+      budgetGuard: new BudgetGuard({
+        costMeter: new CostMeter({ filePath: costFile }),
+        maxDailyUsd: 1,
+      }),
       rateLimit: new RateLimitTracker({ filePath: rateFile }),
     });
     const result = await router.chat([{ role: 'user', content: 'hi' }]);
@@ -92,7 +99,10 @@ describe('TaskAwareRouter', () => {
     const router = new TaskAwareRouter('heal', {
       providers: { 'anthropic:haiku': primary, cohere, g4f: new MockProvider({ fallback: 'g' }) },
       costMeter: new CostMeter({ filePath: costFile }),
-      budgetGuard: new BudgetGuard({ costMeter: new CostMeter({ filePath: costFile }), maxDailyUsd: 1 }),
+      budgetGuard: new BudgetGuard({
+        costMeter: new CostMeter({ filePath: costFile }),
+        maxDailyUsd: 1,
+      }),
       rateLimit: new RateLimitTracker({ filePath: rateFile }),
     });
     const result = await router.chat([{ role: 'user', content: 'hi' }]);
@@ -107,7 +117,10 @@ describe('TaskAwareRouter', () => {
         g4f: new FailingProvider('g'),
       },
       costMeter: new CostMeter({ filePath: costFile }),
-      budgetGuard: new BudgetGuard({ costMeter: new CostMeter({ filePath: costFile }), maxDailyUsd: 1 }),
+      budgetGuard: new BudgetGuard({
+        costMeter: new CostMeter({ filePath: costFile }),
+        maxDailyUsd: 1,
+      }),
       rateLimit: new RateLimitTracker({ filePath: rateFile }),
     });
     await expect(router.chat([{ role: 'user', content: 'x' }])).rejects.toBeInstanceOf(
@@ -134,10 +147,18 @@ describe('TaskAwareRouter', () => {
   it('marks system messages with cache=true under cacheSystem profiles', async () => {
     const recording = new MockProvider({ fallback: 'ok' });
     const spy = vi.spyOn(recording, 'chat');
-    const router = new TaskAwareRouter('heal', {
-      providers: { 'anthropic:haiku': recording, cohere: new MockProvider(), g4f: new MockProvider() },
+    // codegen profile has cacheSystem:true; primary='cohere'
+    const router = new TaskAwareRouter('codegen', {
+      providers: {
+        cohere: recording,
+        'anthropic:sonnet': new MockProvider(),
+        'anthropic:haiku': new MockProvider(),
+      },
       costMeter: new CostMeter({ filePath: costFile }),
-      budgetGuard: new BudgetGuard({ costMeter: new CostMeter({ filePath: costFile }), maxDailyUsd: 1 }),
+      budgetGuard: new BudgetGuard({
+        costMeter: new CostMeter({ filePath: costFile }),
+        maxDailyUsd: 1,
+      }),
       rateLimit: new RateLimitTracker({ filePath: rateFile }),
     });
     await router.chat([
@@ -153,10 +174,17 @@ describe('TaskAwareRouter', () => {
     const router = new TaskAwareRouter('heal', {
       providers: { 'anthropic:haiku': new MockProvider({ fallback: 'r' }) },
       costMeter: new CostMeter({ filePath: costFile }),
-      budgetGuard: new BudgetGuard({ costMeter: new CostMeter({ filePath: costFile }), maxDailyUsd: 1 }),
+      budgetGuard: new BudgetGuard({
+        costMeter: new CostMeter({ filePath: costFile }),
+        maxDailyUsd: 1,
+      }),
       rateLimit: new RateLimitTracker({ filePath: rateFile }),
     });
-    await router.chat([{ role: 'user', content: 'x' }], {}, { testFile: 'x.test.ts', agentName: 'test' });
+    await router.chat(
+      [{ role: 'user', content: 'x' }],
+      {},
+      { testFile: 'x.test.ts', agentName: 'test' },
+    );
     const ledger = fs.readFileSync(costFile, 'utf8').trim().split('\n');
     expect(ledger).toHaveLength(1);
     const entry = JSON.parse(ledger[0]);
@@ -176,7 +204,10 @@ describe('TaskAwareRouter', () => {
     const router = new TaskAwareRouter('heal', {
       providers: { 'anthropic:haiku': failing, cohere, g4f: new MockProvider({ fallback: 'g' }) },
       costMeter: new CostMeter({ filePath: costFile }),
-      budgetGuard: new BudgetGuard({ costMeter: new CostMeter({ filePath: costFile }), maxDailyUsd: 1 }),
+      budgetGuard: new BudgetGuard({
+        costMeter: new CostMeter({ filePath: costFile }),
+        maxDailyUsd: 1,
+      }),
       rateLimit: new RateLimitTracker({ filePath: rateFile }),
     });
     const result = await router.chat([{ role: 'user', content: 'x' }]);

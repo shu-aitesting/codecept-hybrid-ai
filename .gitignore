@@ -50,3 +50,13 @@ coverage/
 # AI development playbooks generated during the build session.
 # These contain local machine paths and Claude-specific instructions.
 IMPLEMENTATION_GUIDE.md
+
+# code-review-graph: local graph database (absolute paths, machine-specific).
+.code-review-graph/
+
+# lean-ctx: local runtime cache and session state.
+.lean-ctx/
+
+# ── Development scratch files ──────────────────────────────────────────────────
+# Raw curl snippets used as input to CurlToApiAgent — not project artifacts.
+*.curl

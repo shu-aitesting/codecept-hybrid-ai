@@ -21,7 +21,7 @@ cp .env.example .env.dev
 # 3. Verify setup (không cần app chạy)
 npm run typecheck   # TypeScript compile OK
 npm run lint        # ESLint pass
-npm run test:unit   # 23 unit tests (không cần browser, không cần server)
+npm run test:unit   # Unit tests AI module — Vitest, không cần browser/server
 
 # 4. Chạy E2E test (cần app đang chạy tại BASE_URL)
 ENV=dev npm test
@@ -64,28 +64,31 @@ codecept-hybrid/
 │   ├── ui/
 │   │   ├── fragments/          # Reusable UI components (root locator + within)
 │   │   ├── pages/              # Compose nhiều fragments, sở hữu 1 screen
-│   │   └── steps/             # Business workflows (loginAs, logout, ...)
+│   │   └── steps/              # Business workflows (loginAs, logout, ...)
 │   ├── visual/                 # VisualComparator (pixelmatch wrapper)
 │   └── ai/
 │       ├── providers/          # LLM gateway: providers, circuit breaker, budget
 │       ├── heal/               # SelfHealEngine, LocatorRepository, HealTelemetry
-│       ├── codegen/            # GenerationPipeline, HtmlToFragmentAgent, ...
+│       ├── codegen/            # GenerationPipeline, HtmlToFragmentAgent, CurlToApiAgent, SwaggerToApiAgent, ...
 │       ├── prompts/            # PromptLibrary (Mustache + YAML front-matter)
+│       ├── data/               # SchemaDrivenFaker
 │       └── utils/              # DomSanitizer
 ├── tests/
-│   ├── ui/smoke/               # @smoke @ui — login, basic flows
+│   ├── ui/smoke/               # @smoke @ui — login, landing, findalist, listregister
 │   ├── api/smoke/              # @smoke @api — health checks
-│   ├── api/regression/         # @api — CRUD scenarios
+│   ├── api/regression/         # @api — find, funds, tableware, user-crud
 │   ├── visual/                 # @visual — screenshot comparison
-│   └── unit/ai/                # Vitest unit tests cho toàn bộ AI module
+│   └── unit/ai/                # Vitest unit tests — 21 files cho toàn bộ AI module
 ├── scripts/
-│   ├── gen.ts                  # CLI: gen page | gen api | gen scenario
+│   ├── gen.ts                  # CLI: gen page | gen api | gen scenario | gen swagger
 │   ├── heal-report.ts          # HTML dashboard từ heal-events.jsonl
-│   └── codegen-report.ts       # LLM cost breakdown report
+│   ├── codegen-report.ts       # LLM cost breakdown report
+│   └── update-baselines.ts     # Cập nhật visual baselines
 ├── docs/
 │   ├── ARCHITECTURE.md         # Hybrid pattern, diagrams, AI flows
 │   ├── ONBOARDING.md           # 1-week plan cho QA mới
 │   ├── AI_FEATURES.md          # Hướng dẫn self-heal + codegen
+│   ├── AI_CODEGEN.md           # CLI reference đầy đủ cho gen commands
 │   └── JENKINS_SETUP.md        # Cài Jenkins: plugins, credentials, webhook
 ├── Dockerfile                  # playwright:v1.59.1-jammy, HUSKY=0 npm ci
 ├── Jenkinsfile                 # Declarative Pipeline: matrix chromium×firefox
@@ -119,7 +122,8 @@ codecept-hybrid/
 | `npm run test:ui:ai` | Bật `AI_HEAL_ENABLED=true`, chạy UI tests với self-healing |
 | `npm run heal:report` | Generate HTML dashboard từ `output/heal-events.jsonl` |
 | `npm run gen:page -- --url <URL> --name <Name>` | Generate Fragments + Page + Steps + Test từ URL |
-| `npm run gen:api -- --curl '<curl>' --name <Name>` | Generate Service (config.apiUrl + relative endpoint) + Test từ cURL |
+| `npm run gen:api -- --curl '<curl>' --name <Name>` | Generate Service + Test từ cURL |
+| `npm run gen:swagger -- --spec <URL\|file> --name <Name>` | Generate Service Objects + Tests từ OpenAPI/Swagger spec |
 | `npm run gen:scenario -- --story '<user story>' --name <Name>` | Generate CodeceptJS test + Step Object từ user story |
 | `npm run codegen:report` | LLM cost breakdown (provider, tokens, $$$) |
 

@@ -10,6 +10,8 @@ import '../src/core/config/ConfigLoader';
 import { CurlToApiAgent } from '../src/ai/codegen/CurlToApiAgent';
 import { HtmlToFragmentAgent } from '../src/ai/codegen/HtmlToFragmentAgent';
 import { ScenarioGeneratorAgent } from '../src/ai/codegen/ScenarioGeneratorAgent';
+import { SwaggerToApiAgent } from '../src/ai/codegen/SwaggerToApiAgent';
+import { SwaggerParser } from '../src/api/swagger/SwaggerParser';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -103,10 +105,10 @@ program
   .description('Generate Fragment + Page + Test from HTML or a URL')
   .option('--url <url>', 'Fetch HTML from URL (requires live network)')
   .option('--html-file <path>', 'Read HTML from local file')
-  .option('--name <name>', 'Fragment/Page class name (PascalCase)', 'GeneratedFragment')
+  .option('--page-name <name>', 'Fragment/Page class name (PascalCase)', 'GeneratedFragment')
   .option('--output-dir <dir>', 'Root output directory', path.join(process.cwd(), 'src', 'ui'))
-  .option('--dry-run', 'Preview output without writing files')
-  .option('--no-cache', 'Skip idempotency cache (re-call LLM)')
+  .option('--preview', 'Preview output without writing files')
+  .option('--skip-cache', 'Skip idempotency cache (re-call LLM)')
   .option('--max-retries <n>', 'Max LLM retries on validation failure', '2')
   .action(async (opts: Record<string, string | boolean>) => {
     let html = '';
@@ -136,7 +138,7 @@ program
     const spinner = ora('Generating Fragment + Page + Test…').start();
     try {
       const agent = new HtmlToFragmentAgent();
-      const fragmentName = opts['name'] as string;
+      const fragmentName = opts['pageName'] as string;
       const result = await agent.run(
         {
           html,
@@ -144,14 +146,14 @@ program
           outputDir: opts['outputDir'] as string,
         },
         {
-          dryRun: !!opts['dryRun'],
-          skipCache: !opts['cache'],
+          dryRun: !!opts['preview'],
+          skipCache: !!opts['skipCache'],
           maxRetries: Number(opts['maxRetries'] ?? 2),
         },
       );
       spinner.succeed(`Generated ${result.fragments.length} fragment(s)`);
 
-      if (opts['dryRun']) {
+      if (opts['preview']) {
         for (const frag of result.fragments) {
           console.log('\n' + chalk.cyan(`── ${frag.name}Fragment.ts ──`));
           console.log(frag.fragmentTs);
@@ -186,10 +188,14 @@ program
   .description('Generate Service + API Test from a cURL command')
   .option('--curl <curl>', 'cURL command string')
   .option('--curl-file <path>', 'Read cURL command from file')
-  .option('--name <name>', 'Service class name (PascalCase, without "Service" suffix)', 'Generated')
+  .option(
+    '--service-name <name>',
+    'Service class name (PascalCase, without "Service" suffix)',
+    'Generated',
+  )
   .option('--output-dir <dir>', 'Root output directory', path.join(process.cwd(), 'src', 'api'))
-  .option('--dry-run', 'Preview output without writing files')
-  .option('--no-cache', 'Skip idempotency cache')
+  .option('--preview', 'Preview output without writing files')
+  .option('--skip-cache', 'Skip idempotency cache')
   .option('--max-retries <n>', 'Max LLM retries on validation failure', '2')
   .action(async (opts: Record<string, string | boolean>) => {
     let curl = '';
@@ -214,17 +220,17 @@ program
       const result = await agent.run(
         {
           curl,
-          serviceName: opts['name'] as string,
+          serviceName: opts['serviceName'] as string,
           outputDir: opts['outputDir'] as string,
         },
         {
-          dryRun: !!opts['dryRun'],
-          skipCache: !opts['cache'],
+          dryRun: !!opts['preview'],
+          skipCache: !!opts['skipCache'],
           maxRetries: Number(opts['maxRetries'] ?? 2),
         },
       );
       spinner.succeed('Generated');
-      if (opts['dryRun']) {
+      if (opts['preview']) {
         console.log('\n' + chalk.cyan('── serviceTs ──'));
         console.log(result.serviceTs);
         console.log('\n' + chalk.cyan('── testTs ──'));
@@ -244,14 +250,14 @@ program
   .description('Generate Gherkin feature + step definitions from a user story')
   .option('--story <story>', 'User story text')
   .option('--story-file <path>', 'Read user story from file')
-  .option('--name <name>', 'Feature name (PascalCase)', 'GeneratedFeature')
+  .option('--feature-name <name>', 'Feature name (PascalCase)', 'GeneratedFeature')
   .option(
     '--output-dir <dir>',
     'Output directory for .feature and .steps.ts',
     path.join(process.cwd(), 'tests', 'bdd'),
   )
-  .option('--dry-run', 'Preview output without writing files')
-  .option('--no-cache', 'Skip idempotency cache')
+  .option('--preview', 'Preview output without writing files')
+  .option('--skip-cache', 'Skip idempotency cache')
   .option('--max-retries <n>', 'Max LLM retries on validation failure', '2')
   .action(async (opts: Record<string, string | boolean>) => {
     let story = '';
@@ -276,17 +282,17 @@ program
       const result = await agent.run(
         {
           userStory: story,
-          featureName: opts['name'] as string,
+          featureName: opts['featureName'] as string,
           outputDir: opts['outputDir'] as string,
         },
         {
-          dryRun: !!opts['dryRun'],
-          skipCache: !opts['cache'],
+          dryRun: !!opts['preview'],
+          skipCache: !!opts['skipCache'],
           maxRetries: Number(opts['maxRetries'] ?? 2),
         },
       );
       spinner.succeed('Generated');
-      if (opts['dryRun']) {
+      if (opts['preview']) {
         console.log('\n' + chalk.cyan('── featureFile ──'));
         console.log(result.featureFile);
         console.log('\n' + chalk.cyan('── stepsTs ──'));
@@ -297,6 +303,117 @@ program
     } catch (err) {
       spinner.fail(`Generation failed: ${(err as Error).message}`);
       process.exit(1);
+    }
+  });
+
+// ─── gen swagger ─────────────────────────────────────────────────────────────
+program
+  .command('swagger')
+  .description('Generate Service + API Tests for ALL endpoints from a Swagger/OpenAPI spec')
+  .option('--input <path|url>', 'Path to swagger.json file or https:// URL of the spec')
+  .option(
+    '--output <dir>',
+    'Root output dir for Service files',
+    path.join(process.cwd(), 'src', 'api'),
+  )
+  .option(
+    '--test-output <dir>',
+    'Output dir for test files',
+    path.join(process.cwd(), 'tests', 'api', 'smoke'),
+  )
+  .option('--group <name>', 'Generate only the named group (PascalCase tag name)')
+  .option('--preview', 'Preview output without writing files')
+  .option('--skip-cache', 'Skip idempotency cache (re-call LLM)')
+  .option('--max-retries <n>', 'Max LLM retries on validation failure', '2')
+  .action(async (opts: Record<string, string | boolean>) => {
+    const input = opts['input'] as string | undefined;
+    if (!input) {
+      console.error(chalk.red('Provide --input <path|url>'));
+      process.exit(1);
+    }
+
+    // ── Step 1: Parse swagger spec ──────────────────────────────────────────
+    const parseSpinner = ora(`Parsing Swagger spec: ${input}…`).start();
+    let parsed;
+    try {
+      parsed = await SwaggerParser.parse(input);
+      parseSpinner.succeed(
+        `Parsed "${parsed.title}" v${parsed.version} — ${parsed.groups.length} tag group(s) found`,
+      );
+    } catch (err) {
+      parseSpinner.fail(`Swagger parse failed: ${(err as Error).message}`);
+      process.exit(1);
+    }
+
+    // ── Step 2: Filter to specific group if requested ───────────────────────
+    let groups = parsed.groups;
+    const groupFilter = opts['group'] as string | undefined;
+    if (groupFilter) {
+      groups = groups.filter((g) => g.groupName === groupFilter);
+      if (groups.length === 0) {
+        const available = parsed.groups.map((g) => g.groupName).join(', ');
+        console.error(chalk.red(`Group "${groupFilter}" not found. Available: ${available}`));
+        process.exit(1);
+      }
+    }
+
+    console.log(
+      chalk.dim(
+        `Groups to generate: ${groups.map((g) => `${g.groupName} (${g.endpoints.length} endpoints)`).join(', ')}`,
+      ),
+    );
+
+    // ── Step 3: Generate per group ──────────────────────────────────────────
+    const agent = new SwaggerToApiAgent();
+    const outputDir = opts['output'] as string;
+    const testOutputDir = opts['testOutput'] as string;
+    const dryRun = !!opts['preview'];
+    const skipCache = !!opts['skipCache'];
+    const maxRetries = Number(opts['maxRetries'] ?? 2);
+
+    const generatedParsed = { ...parsed, groups };
+
+    let groupSpinner: ReturnType<typeof ora> | null = null;
+
+    const results = await agent
+      .runAll(generatedParsed, {
+        outputDir,
+        testOutputDir,
+        dryRun,
+        skipCache,
+        maxRetries,
+        onGroupStart: (groupName, index, total) => {
+          groupSpinner = ora(`[${index + 1}/${total}] Generating ${groupName}…`).start();
+        },
+        onGroupDone: (groupName) => {
+          groupSpinner?.succeed(`[done] ${groupName}`);
+          groupSpinner = null;
+        },
+      })
+      .catch((err) => {
+        groupSpinner?.fail(`Generation failed: ${(err as Error).message}`);
+        process.exit(1);
+      });
+
+    // ── Step 4: Output results ──────────────────────────────────────────────
+    if (!results) return;
+
+    if (dryRun) {
+      for (const [groupName, output] of results) {
+        console.log('\n' + chalk.cyan(`══ ${groupName}Service.ts ══`));
+        console.log(output.serviceTs);
+        console.log('\n' + chalk.cyan(`══ ${groupName.toLowerCase()}.test.ts ══`));
+        console.log(output.testTs);
+      }
+    } else {
+      console.log('\n' + chalk.green(`✔ Generated ${results.size} group(s):`));
+      for (const [groupName] of results) {
+        const svcFile = path.join(outputDir, 'services', `${groupName}Service.ts`);
+        const testFile = path.join(testOutputDir, `${SwaggerParser.toSlug(groupName)}.test.ts`);
+        console.log(`  ${chalk.dim('service')}  ${svcFile}`);
+        console.log(`  ${chalk.dim('test   ')}  ${testFile}`);
+      }
+      console.log(chalk.dim('\nRun `npm run typecheck` to verify.'));
     }
   });
 
