@@ -86,19 +86,19 @@ AI_HEAL_ENABLED=true ENV=dev npx codeceptjs run tests/ui/smoke/login.test.ts
 
 ```bash
 # Fetch HTML từ URL
-npm run gen:page -- --url https://app.example.com/checkout --name Checkout
+npm run gen:page -- --url https://app.example.com/checkout --page-name Checkout
 
 # Đọc HTML từ file local
-npm run gen:page -- --html-file /tmp/page.html --name ProductDetail
+npm run gen:page -- --html-file /tmp/page.html --page-name ProductDetail
 
-# Dry-run: preview pipeline không gọi LLM, không write files
-npm run gen:page -- --url https://example.com --name Example --dry-run
+# Preview: xem output mà không write file
+npm run gen:page -- --url https://example.com --page-name Example --preview
 
 # Tắt cache (gọi LLM ngay cả khi input giống lần trước)
-npm run gen:page -- --url https://example.com --name Example --no-cache
+npm run gen:page -- --url https://example.com --page-name Example --skip-cache
 
 # Giới hạn số lần retry khi LLM output invalid
-npm run gen:page -- --url https://example.com --name Example --max-retries 1
+npm run gen:page -- --url https://example.com --page-name Example --max-retries 1
 ```
 
 **Output (3 files):**

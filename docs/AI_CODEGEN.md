@@ -18,23 +18,27 @@ Three agents that convert real-world inputs into working TypeScript test code. E
 
 ```bash
 # Fragment + Page + Test from a local HTML file
-npm run gen:page -- --html-file ./samples/login.html --name LoginForm
+npm run gen:page -- --html-file ./samples/login.html --page-name LoginForm
 
 # Fragment + Page + Test from a URL (live fetch)
-npm run gen:page -- --url https://your-app.local/login --name LoginForm
+npm run gen:page -- --url https://your-app.local/login --page-name LoginForm
 
-# Service + API Test from a cURL command
-npm run gen:api -- --curl "curl -X POST https://api.example.com/users -H 'Content-Type: application/json' -d '{\"name\":\"Alice\"}'" --name User
+# Service + API Test from a cURL file (recommended on Windows)
+npm run gen:api -- --curl-file ./samples/users.curl --service-name User
 
-# Service + API Test from a cURL file
-npm run gen:api -- --curl-file ./samples/users.curl --name User
+# Service + API Test from an inline cURL (macOS/bash only — see note below)
+npm run gen:api -- --curl 'curl -X POST https://api.example.com/users -H "Content-Type: application/json"' --service-name User
 
 # Gherkin feature + step definitions from a user story
-npm run gen:scenario -- --story "As a user I want to log in with email and password" --name Login
+npm run gen:scenario -- --story "As a user I want to log in with email and password" --feature-name Login
 
 # Preview any command without writing files
-npm run gen:page -- --url https://your-app.local/login --name Login --dry-run
+npm run gen:page -- --url https://your-app.local/login --page-name Login --preview
 ```
+
+> **Windows PowerShell note:** Use `--curl-file` instead of inline `--curl`.  
+> Lý do: PowerShell mangle quotes khi truyền qua `npm run`, khiến curl string bị split.  
+> Lưu cURL vào file `.curl` → truyền `--curl-file path/to/file.curl`.
 
 ---
 
@@ -44,13 +48,13 @@ npm run gen:page -- --url https://your-app.local/login --name Login --dry-run
 
 ```
 Options:
-  --url <url>          Fetch HTML from a live URL
-  --html-file <path>   Read HTML from a local file (faster, no network)
-  --name <name>        PascalCase class name (default: "GeneratedFragment")
-  --output-dir <dir>   Root output dir (default: src/ui)
-  --dry-run            Preview output in console, no files written
-  --no-cache           Bypass idempotency cache (force LLM re-call)
-  --max-retries <n>    TypeScript retry limit (default: 2)
+  --url <url>           Fetch HTML from a live URL
+  --html-file <path>    Read HTML from a local file (faster, no network)
+  --page-name <name>    PascalCase class name (default: "GeneratedFragment")
+  --output-dir <dir>    Root output dir (default: src/ui)
+  --preview             Preview output in console, no files written
+  --skip-cache          Bypass idempotency cache (force LLM re-call)
+  --max-retries <n>     TypeScript retry limit (default: 2)
 ```
 
 Writes to:
@@ -62,13 +66,13 @@ Writes to:
 
 ```
 Options:
-  --curl <curl>        cURL command string
-  --curl-file <path>   Read cURL from file
-  --name <name>        Service class name without "Service" suffix (default: "Generated")
-  --output-dir <dir>   Root output dir (default: src/api)
-  --dry-run            Preview, no files
-  --no-cache           Bypass cache
-  --max-retries <n>    Retry limit (default: 2)
+  --curl <curl>          cURL command string (macOS/bash) hoặc dùng --curl-file
+  --curl-file <path>     Read cURL from file (recommended — works on all platforms)
+  --service-name <name>  Service class name without "Service" suffix (default: "Generated")
+  --output-dir <dir>     Root output dir (default: src/api)
+  --preview              Preview, no files
+  --skip-cache           Bypass cache
+  --max-retries <n>      Retry limit (default: 2)
 ```
 
 Writes to:
@@ -79,18 +83,35 @@ Writes to:
 
 ```
 Options:
-  --story <story>      User story text
-  --story-file <path>  Read story from file
-  --name <name>        PascalCase feature name (default: "GeneratedFeature")
-  --output-dir <dir>   Output dir cho test file (default: tests/ui/regression)
-  --dry-run            Preview, no files
-  --no-cache           Bypass cache
-  --max-retries <n>    Retry limit (default: 2)
+  --story <story>        User story text
+  --story-file <path>    Read story from file
+  --feature-name <name>  PascalCase feature name (default: "GeneratedFeature")
+  --output-dir <dir>     Output dir cho test file (default: tests/ui/regression)
+  --preview              Preview, no files
+  --skip-cache           Bypass cache
+  --max-retries <n>      Retry limit (default: 2)
 ```
 
 Writes to:
 - `{outputDir}/{kebab-name}.test.ts` — CodeceptJS format (`Feature(...)`, `Scenario(...)`, `.tag('@smoke')`)
 - `src/ui/steps/{Name}Steps.ts` — Step Object skeleton (không phải Cucumber step defs)
+
+### `npm run gen:swagger`
+
+```
+Options:
+  --input <path|url>     Path to swagger.json file hoặc https:// URL của spec
+  --output <dir>         Root output dir cho Service files (default: src/api)
+  --test-output <dir>    Output dir cho test files (default: tests/api/smoke)
+  --group <name>         Chỉ generate group theo PascalCase tag name
+  --preview              Preview, no files
+  --skip-cache           Bypass cache
+  --max-retries <n>      Retry limit (default: 2)
+```
+
+Writes to:
+- `{output}/services/{GroupName}Service.ts` — một file per Swagger tag group
+- `{testOutput}/{tag-slug}.test.ts`
 
 ---
 
@@ -181,7 +202,7 @@ The `TaskAwareRouter` falls back through the provider chain automatically (Sonne
 
 The idempotency cache (`output/codegen-cache.db`) has a 7-day TTL. To force a fresh LLM call:
 ```bash
-npm run gen:page -- --html-file ./login.html --name Login --no-cache
+npm run gen:page -- --html-file ./login.html --page-name Login --skip-cache
 ```
 
 ### Generated selectors don't match

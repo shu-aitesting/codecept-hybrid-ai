@@ -5,10 +5,10 @@
 **Vai trò**: Bạn là QA Automation Engineer muốn tự xây một framework Test Automation **từ con số 0**, phục vụ cả **UI (Web)**, **API**, và **Visual Testing**, với các tính năng **AI chuyên sâu** (self-healing, AI-driven test data, AI code generation).
 
 **Tech Stack chốt**:
-- **Playwright** v1.54+ — browser automation engine
-- **CodeceptJS** v3.6+ — BDD-ready test runner với plugin AI + heal (self-healing)
+- **Playwright** v1.59 — browser automation engine
+- **CodeceptJS** v3.7 — BDD-ready test runner với plugin AI + heal (self-healing)
 - **RestClient** (Playwright-style API client, custom) — API testing layer
-- **TypeScript** 5.x — ngôn ngữ chính
+- **TypeScript** 5.9 — ngôn ngữ chính
 - **Pattern**: Hybrid — **Page Fragments** (UI components) + **Step Objects** (business workflows)
 - **LLM**: Anthropic Claude (primary) + Cohere/HuggingFace/G4F (free tier fallback) → tối ưu chi phí
 
@@ -70,11 +70,13 @@ codecept-hybrid/                            ← thư mục hiện tại
 │   │   │   ├── RestMethod.ts
 │   │   │   └── CurlConverter.ts
 │   │   ├── services/                       # API Service Objects (Fragments pattern cho API)
-│   │   │   ├── AuthService.ts
-│   │   │   ├── UserService.ts
-│   │   │   └── ProductService.ts
-│   │   └── schemas/                        # JSON Schema / Zod validation
-│   │       └── user.schema.ts
+│   │   │   ├── FindService.ts
+│   │   │   ├── fundsService.ts
+│   │   │   └── tablewareService.ts
+│   │   ├── schemas/                        # JSON Schema / Zod validation
+│   │   │   └── user.schema.ts
+│   │   └── swagger/                        # OpenAPI/Swagger parsing
+│   │       └── SwaggerParser.ts
 │   ├── ui/                                 # UI Hybrid: Fragments + Step Objects
 │   │   ├── fragments/                      # Fragments = autonomous components (root locator + within())
 │   │   │   ├── common/
@@ -83,14 +85,28 @@ codecept-hybrid/                            ← thư mục hiện tại
 │   │   │   │   └── ModalFragment.ts
 │   │   │   └── features/
 │   │   │       ├── LoginFormFragment.ts
-│   │   │       └── ProductCardFragment.ts
+│   │   │       ├── LandingFragment.ts
+│   │   │       ├── LandingHeaderFragment.ts
+│   │   │       ├── LandingFooterFragment.ts
+│   │   │       ├── LandingYourUltimateFragment.ts
+│   │   │       ├── FindAListHeaderFragment.ts
+│   │   │       ├── FindAListMainFragment.ts
+│   │   │       ├── FindAListFooterFragment.ts
+│   │   │       ├── ListRegisterNavigationFragment.ts
+│   │   │       └── ListRegisterCongratulationsFragment.ts
 │   │   ├── pages/                          # Page Objects tổng hợp nhiều fragments
+│   │   │   ├── base/
+│   │   │   │   └── BasePage.ts
 │   │   │   ├── LoginPage.ts
-│   │   │   └── DashboardPage.ts
+│   │   │   ├── DashboardPage.ts
+│   │   │   ├── LandingPage.ts
+│   │   │   ├── FindAListPage.ts
+│   │   │   └── ListRegisterPage.ts
 │   │   └── steps/                          # Step Objects = workflows ghép nhiều pages
-│   │       ├── auth.steps.ts               # loginAs(role), logout(), ...
-│   │       ├── checkout.steps.ts
-│   │       └── onboarding.steps.ts
+│   │       ├── AuthSteps.ts                # loginAs(role), logout(), ...
+│   │       ├── LandingSteps.ts
+│   │       ├── FindAListSteps.ts
+│   │       └── ListRegisterSteps.ts
 │   ├── visual/
 │   │   ├── VisualComparator.ts             # Wrapper cho pixelmatch/resemblejs
 │   │   ├── baselines/                      # Ảnh gốc
@@ -119,36 +135,48 @@ codecept-hybrid/                            ← thư mục hiện tại
 │   │   │   ├── LocatorRepository.ts        # v2: SQLite + decay + success/fail stats
 │   │   │   └── HealTelemetry.ts            # Append output/heal-events.jsonl
 │   │   ├── data/
-│   │   │   ├── AIDataGenerator.ts          # Natural language → test data
 │   │   │   └── SchemaDrivenFaker.ts        # Sinh data theo JSON Schema
 │   │   └── codegen/                        # Code generation pipeline + agents
 │   │       ├── GenerationPipeline.ts       # Shared: load → render → LLM → validate → retry
 │   │       ├── GenerationCache.ts          # SQLite idempotency (input hash → output)
+│   │       ├── GoldenExampleLoader.ts      # Load few-shot examples cho prompt context
+│   │       ├── FragmentSegmenter.ts        # Chia HTML thành vùng fragment độc lập
 │   │       ├── LocatorScorer.ts            # Port AiDetectElements (Cheerio scoring)
+│   │       ├── ApiPostValidator.ts         # Validate generated API service + test compile
 │   │       ├── HtmlToFragmentAgent.ts      # HTML → Fragment + Page + Test (Hybrid output)
 │   │       ├── CurlToApiAgent.ts           # cURL → Service Object + API test
+│   │       ├── SwaggerToApiAgent.ts        # OpenAPI/Swagger → Service Objects + tests
 │   │       └── ScenarioGeneratorAgent.ts   # User story → Gherkin + step skeletons
 │   ├── fixtures/                           # Reusable test data
-│   │   ├── users.json
-│   │   └── products.json
+│   │   └── factories/
+│   │       ├── UserFactory.ts              # Rosie factory cho UI test user
+│   │       └── UserApiFactory.ts           # Rosie factory cho API test user
+│   ├── types/
+│   │   └── custom-steps.ts                 # Mở rộng I actor với custom step types
 │   └── hooks/
 │       ├── globalSetup.ts
 │       ├── globalTeardown.ts
 │       └── scenarioHooks.ts                # Before/After/BeforeAll
 ├── tests/
 │   ├── ui/
-│   │   ├── smoke/
-│   │   │   └── login.test.ts
-│   │   ├── regression/
-│   │   └── features/                       # .feature files (BDD/Gherkin — optional)
-│   │       └── auth.feature
+│   │   └── smoke/
+│   │       ├── login.test.ts
+│   │       ├── landing.test.ts
+│   │       ├── findalist.test.ts
+│   │       └── listregister.test.ts
 │   ├── api/
 │   │   ├── smoke/
-│   │   │   └── health.test.ts
+│   │   │   ├── health.test.ts
+│   │   │   └── filesystem.test.ts
 │   │   └── regression/
-│   │       └── user-crud.test.ts
-│   └── visual/
-│       └── homepage.visual.test.ts
+│   │       ├── user-crud.test.ts
+│   │       ├── find.test.ts
+│   │       ├── funds.test.ts
+│   │       └── tableware.test.ts
+│   ├── visual/
+│   │   └── homepage.visual.test.ts
+│   └── unit/
+│       └── ai/                             # Vitest unit tests — 21 test files
 ├── output/                                 # Test artifacts
 │   ├── logs/
 │   ├── reports/
@@ -159,21 +187,24 @@ codecept-hybrid/                            ← thư mục hiện tại
 │   ├── traces/
 │   └── visual-diffs/
 ├── scripts/
-│   ├── gen.ts                              # Commander CLI entry: gen page|api|scenario
+│   ├── gen.ts                              # Commander CLI entry: gen page|api|scenario|swagger
 │   ├── heal-report.ts                      # Tổng hợp heal-events.jsonl → HTML dashboard
-│   └── codegen-report.ts                   # Tổng hợp codegen telemetry (cost/retry rate)
+│   ├── codegen-report.ts                   # Tổng hợp codegen telemetry (cost/retry rate)
+│   └── update-baselines.ts                 # Cập nhật visual baseline screenshots
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── ONBOARDING.md
-│   └── AI_FEATURES.md
+│   ├── AI_FEATURES.md
+│   ├── AI_CODEGEN.md                       # CLI reference đầy đủ cho gen:page/api/scenario/swagger
+│   └── JENKINS_SETUP.md                    # Setup Jenkins: plugins, credentials, webhook
 ├── .env.example
 ├── .eslintrc.json
 ├── .prettierrc
 ├── .gitignore
 ├── tsconfig.json
 ├── package.json
-├── ROADMAP.md                              # Roadmap tóm tắt (file hiện có)
-└── t-i-l-m-t-qa-unified-rain.md           # Roadmap chi tiết 14 bước (file này)
+├── ROADMAP.md                              # Roadmap tóm tắt (file này)
+└── IMPLEMENTATION_GUIDE.md                 # Playbook chi tiết 14 bước (99 micro-steps)
 ```
 
 ---
@@ -390,7 +421,7 @@ Trong test chỉ cần `I.loginAs('admin')` — không care low-level locators.
 ### Bước 13 — CI/CD + Docker (Jenkins + GitHub)
 
 **Làm gì**:
-- `Dockerfile` dựa trên `mcr.microsoft.com/playwright:v1.54.2-jammy` (có sẵn browsers + libs, Jenkins dùng làm Docker agent).
+- `Dockerfile` dựa trên `mcr.microsoft.com/playwright:v1.59.1-jammy` (có sẵn browsers + libs, Jenkins dùng làm Docker agent).
 - `Jenkinsfile` ở root — Declarative Pipeline gộp cả PR trigger lẫn nightly schedule:
   - `triggers { githubPush() }` — GitHub webhook kích hoạt build khi push/PR.
   - `triggers { cron('H 2 * * *') }` — chạy regression đầy đủ mỗi đêm.

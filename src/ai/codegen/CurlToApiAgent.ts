@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { CurlConverter } from '../../api/rest/CurlConverter';
 import { RestMethod } from '../../api/rest/RestMethod';
 
+import { createApiPostValidate } from './ApiPostValidator';
 import { GenerationCache } from './GenerationCache';
 import { GenerationPipeline, PipelineConfig, RunOpts } from './GenerationPipeline';
 import { GoldenExampleLoader } from './GoldenExampleLoader';
@@ -72,6 +73,7 @@ function buildConfig(
         body: req.body ? JSON.stringify(req.body) : '{}',
         endpointDescription: inferEndpointDescription(req.method, req.url),
         goldenServiceTs: goldenLoader.load('service'),
+        goldenTestTs: goldenLoader.load('test'),
       };
     },
 
@@ -86,7 +88,7 @@ function buildConfig(
       )]: files.testTs,
     }),
 
-    postValidate: deps.postValidate,
+    postValidate: deps.postValidate ?? createApiPostValidate(),
   };
 }
 

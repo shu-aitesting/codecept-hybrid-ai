@@ -141,6 +141,48 @@ export = new AuthSteps();
 `;
 
 /**
+ * Golden API Test example — find.test.ts
+ *
+ * Demonstrates:
+ *  • Feature-level `.tag('@api').tag('@regression')` — NOT in the feature title string
+ *  • `let client` and `let svc` declared at module scope
+ *  • `Before`: `client.init()` then `new XxxService(client)` — lifecycle in the right order
+ *  • `After`: `client.dispose()` — always cleans up
+ *  • `res.expectStatus(code)` — ONLY assertion style allowed
+ *  • Scenario tags chained after callback: `.tag('@smoke')`, `.tag('@negative')`
+ *  • NO `RestRequestBuilder` import — all HTTP goes through the service
+ */
+const GOLDEN_TEST = `\
+import { FindService, GiftListFindRequest } from '@api/services/FindService';
+import { RestClient } from '@api/rest/RestClient';
+
+Feature('GiftList API').tag('@api').tag('@regression');
+
+let client: RestClient;
+let svc: FindService;
+
+Before(async () => {
+  client = new RestClient();
+  await client.init();
+  svc = new FindService(client);
+});
+
+After(async () => {
+  await client.dispose();
+});
+
+Scenario('Find gift list returns 200', async () => {
+  const res = await svc.findGiftList({ name: 'Birthday', month: 'January' });
+  res.expectStatus(200);
+}).tag('@smoke');
+
+Scenario('Find gift list with empty name returns 400', async () => {
+  const res = await svc.findGiftList({ name: '', month: 'January' });
+  res.expectStatus(400);
+}).tag('@negative');
+`;
+
+/**
  * Golden API Service example — FindService.ts
  *
  * Demonstrates:
@@ -194,15 +236,17 @@ const OVERRIDE_PATHS: Record<GoldenKey, string> = {
   fragment: path.join('config', 'ai', 'examples', 'LoginFormFragment.golden.ts'),
   steps: path.join('config', 'ai', 'examples', 'AuthSteps.golden.ts'),
   service: path.join('config', 'ai', 'examples', 'FindService.golden.ts'),
+  test: path.join('config', 'ai', 'examples', 'FindService.test.golden.ts'),
 };
 
 const EMBEDDED: Record<GoldenKey, string> = {
   fragment: GOLDEN_FRAGMENT,
   steps: GOLDEN_STEPS,
   service: GOLDEN_SERVICE,
+  test: GOLDEN_TEST,
 };
 
-export type GoldenKey = 'fragment' | 'steps' | 'service';
+export type GoldenKey = 'fragment' | 'steps' | 'service' | 'test';
 
 /**
  * Loads golden example code for injection into LLM prompt contexts.

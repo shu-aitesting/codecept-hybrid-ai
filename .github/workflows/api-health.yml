@@ -1,0 +1,45 @@
+name: API Health Check
+
+on:
+  schedule:
+    # Run daily at 2:00 AM UTC
+    - cron: '0 2 * * *'
+  # Allow manual trigger from GitHub UI (useful for debugging without waiting for cron)
+  workflow_dispatch:
+
+jobs:
+  health:
+    name: Daily API Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run API health check (@health tagged scenarios — GET/HEAD only)
+        run: npm run test:health
+        env:
+          ENV: staging
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_URL: ${{ secrets.API_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Disable AI features during health check to avoid unnecessary LLM costs
+          AI_HEAL_ENABLED: 'false'
+          CI: 'true'
+          HEADLESS: 'true'
+
+      - name: Upload Allure results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-check-allure-${{ github.run_number }}
+          path: output/reports/allure/
+          retention-days: 7

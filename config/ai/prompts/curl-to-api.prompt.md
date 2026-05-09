@@ -50,6 +50,14 @@ You are a TypeScript + CodeceptJS API test-automation expert. Given a parsed HTT
 ```
 
 {{/goldenServiceTs}}
+{{#goldenTestTs}}
+## Golden reference — Test (follow this pattern exactly)
+
+```typescript
+{{{goldenTestTs}}}
+```
+
+{{/goldenTestTs}}
 ## Output
 Return a JSON object exactly matching: `{ "serviceTs": string, "testTs": string }`. No markdown, no commentary.
 
