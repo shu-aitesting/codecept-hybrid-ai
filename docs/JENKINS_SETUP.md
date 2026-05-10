@@ -22,15 +22,21 @@ Restart Jenkins sau khi cài xong.
 
 Vào **Manage Jenkins → Credentials → System → Global credentials → Add Credentials**.
 
-Tạo 3 credential, loại **Secret text**:
+Tạo 4 credential, loại **Secret text**:
 
-| ID (phải khớp chính xác) | Value |
-|---|---|
-| `codecept-base-url` | URL của app đang test, vd: `https://dev.yourapp.com` |
-| `codecept-api-url` | URL của API, vd: `https://api.dev.yourapp.com` |
-| `anthropic-api-key` | API key Anthropic (lấy từ console.anthropic.com) |
+| ID (phải khớp chính xác) | Value | Bắt buộc |
+|---|---|---|
+| `codecept-base-url` | URL của app đang test, vd: `https://dev.yourapp.com` | ✅ |
+| `codecept-api-url` | URL của API, vd: `https://api.dev.yourapp.com` | ✅ |
+| `cohere-api-key` | API key Cohere — primary provider, free 1000 calls/month (dashboard.cohere.com) | Khuyến nghị |
+| `anthropic-api-key` | API key Anthropic — fallback cho codegen quality cao (console.anthropic.com) | Optional |
 
 > Nếu cần thêm `ADMIN_EMAIL`, `ADMIN_PASSWORD` cho login test: thêm tương tự và khai báo trong block `environment {}` của Jenkinsfile.
+
+> **Lưu ý cập nhật `Jenkinsfile`**: file hiện tại chỉ inject `ANTHROPIC_API_KEY`. Nếu muốn dùng Cohere primary trong CI (theo `config/ai/providers.profiles.ts`), thêm vào block `environment {}`:
+> ```groovy
+> COHERE_API_KEY = credentials('cohere-api-key')
+> ```
 
 ---
 

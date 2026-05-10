@@ -8,9 +8,12 @@ Three agents that convert real-world inputs into working TypeScript test code. E
 
 | Agent | Input | Output | Cost (est.) | When to use |
 |---|---|---|---|---|
-| `HtmlToFragmentAgent` | HTML / URL | Fragments + Page + Steps + Test (4 files) | ~$0.03–0.08 | New page/component — auto-generate the skeleton |
-| `CurlToApiAgent` | cURL command | Service class + API test (2 files) | ~$0.02–0.05 | New API endpoint — convert Postman/curl to typed service |
-| `ScenarioGeneratorAgent` | User story text | CodeceptJS test + Step Object (2 files) | ~$0.02–0.04 | BA story → draft test scenarios + step object with edge cases |
+| `HtmlToFragmentAgent` | HTML / URL | Fragments + Page + Steps + Test (4 files) | $0 (Cohere) / ~$0.03–0.08 (Anthropic Sonnet fallback) | New page/component — auto-generate the skeleton |
+| `CurlToApiAgent` | cURL command | Service class + API test (2 files) | $0 (Cohere) / ~$0.02–0.05 (Anthropic fallback) | New API endpoint — convert Postman/curl to typed service |
+| `ScenarioGeneratorAgent` | User story text | CodeceptJS test + Step Object (2 files) | $0 (Cohere) / ~$0.02–0.04 (Anthropic fallback) | BA story → draft test scenarios + step object with edge cases |
+| `SwaggerToApiAgent` | OpenAPI/Swagger spec | Service per tag group + tests | $0 (Cohere) / ~$0.05–0.20 (Anthropic — depends on spec size) | Bulk-generate service objects from existing API contract |
+
+> **Cost note**: Profile `codegen` route Cohere primary (free 1000 calls/month). Cost chỉ phát sinh khi fallback sang Anthropic Sonnet 4.6 (`$3/1M input`, `$15/1M output`, hoặc `$0.30/1M` cho cached input). Theo dõi qua `npm run codegen:report`.
 
 ---
 
@@ -140,7 +143,6 @@ Writes to:
    ```markdown
    ---
    task: your-template
-   model: anthropic:sonnet
    examples:
      - input: { key: "value" }
        output: { "outputField": "example content" }
@@ -150,6 +152,7 @@ Writes to:
    ## USER
    Input: {{{key}}}
    ```
+   Note: model selection is driven by `providers.profiles.ts` (task → primary/fallback chain), not the prompt front-matter.
 2. Create a Zod schema for the output shape
 3. Create `src/ai/codegen/{YourAgent}.ts` using `GenerationPipeline` with your template name + schema
 4. Add CLI sub-command in `scripts/gen.ts`
@@ -196,7 +199,7 @@ The LLM occasionally imports non-existent helper methods. Run `npm run typecheck
 
 ### LLM rate-limited
 
-The `TaskAwareRouter` falls back through the provider chain automatically (Sonnet → Haiku → Cohere). If all providers are exhausted, wait for the cooldown (shown in `output/.rate-limits.json`) or set a different `ANTHROPIC_API_KEY`.
+The `TaskAwareRouter` falls back through the provider chain automatically (Cohere → Anthropic Sonnet → Anthropic Haiku for `codegen`). If Cohere quota exceeded (1000/month) the router skips it and uses Anthropic — costs will appear in `output/llm-cost.jsonl`. If all providers are exhausted, wait for the cooldown (shown in `output/.rate-limits.json`) or rotate keys.
 
 ### Cache is stale
 
