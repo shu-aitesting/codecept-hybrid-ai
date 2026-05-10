@@ -47,6 +47,10 @@ class ListRegisterCongratulationsFragment extends BaseFragment {
   async openTerms(): Promise<void> {
     this.I.click(this.selectors.termsLink);
   }
+
+  async verifyTermsLinkVisible(): Promise<void> {
+    this.I.seeElement(this.selectors.termsLink);
+  }
 }
 
 export = ListRegisterCongratulationsFragment;

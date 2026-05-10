@@ -9,18 +9,18 @@ Hướng dẫn setup và sử dụng 3 AI features: Self-Healing, Code Generatio
 Thêm vào `.env.dev` (hoặc `.env.staging`, `.env.prod`):
 
 ```bash
-# Primary (khuyến nghị)
-ANTHROPIC_API_KEY=sk-ant-...
+# Primary (khuyến nghị) — free tier đủ cho hầu hết workflows
+COHERE_API_KEY=...        # 1000 calls/month miễn phí trên command-a-03-2025
 
-# Free-tier fallbacks (optional)
-COHERE_API_KEY=...        # 1000 calls/month miễn phí
-HF_TOKEN=hf_...           # ~30k tokens/day miễn phí
+# Fallback (chất lượng cao + prompt caching, tốn $$$)
+ANTHROPIC_API_KEY=sk-ant-...   # Haiku 4.5 cho heal/data-gen, Sonnet 4.6 cho codegen
 
-# G4F (no key needed, last resort, quality không ổn định)
-# Tự động dùng nếu 3 provider trên đều không available
+# Last resort (free, quality kém hơn)
+HF_TOKEN=hf_...           # Qwen2.5-Coder, ~30k tokens/day miễn phí
+# G4F: no key needed — community gateway, uptime không ổn định
 ```
 
-Không có key nào → AI features bị disable; unit tests và E2E tests thông thường vẫn chạy bình thường.
+Tối thiểu cần `COHERE_API_KEY` để bật AI features (đủ cho dev/CI thông thường). Không có key nào → AI features tự disable; unit tests và E2E tests vẫn chạy bình thường (chỉ heal plugin và `gen:*` không hoạt động).
 
 ---
 
@@ -57,9 +57,9 @@ npm run heal:report
 
 Report hiển thị:
 - Tổng heal attempts / success rate %
-- Per-provider breakdown (Anthropic vs Cohere vs ...)
+- Per-provider breakdown (Cohere vs Anthropic vs HF vs G4F)
 - Top 10 selectors hay bị break nhất
-- Chi phí LLM / heal call
+- Chi phí LLM / heal call (chỉ tính cho Anthropic — Cohere/HF/G4F = $0)
 
 ### Locator cache (SQLite)
 
@@ -212,33 +212,37 @@ CurlToApiAgent         5   $0.008       923             188
 ScenarioGenerator      3   $0.005       412             856
 ```
 
-### Prompt caching (Anthropic)
+### Prompt caching (Anthropic only)
 
-Anthropic Provider tự động bật **prompt caching** (`cache_control: ephemeral`, TTL 5 phút):
+Khi router fallback sang Anthropic (vd: Cohere quota cạn), provider tự động bật **prompt caching** với `cache_control: { type: 'ephemeral' }` (TTL 5 phút) cho mọi system block — chỉ profile có `cacheSystem: true` (`codegen`, `review`):
 - System prompt + few-shot examples được cache phía Anthropic
-- Cached input tokens tính $0.08/1M (vs $0.80/1M regular) — giảm 90% chi phí cho input
+- Cached input tokens tính $0.08/1M (vs $0.80/1M regular cho Haiku 4.5) — giảm 90% chi phí cho input
+- Sonnet 4.6: cached $0.30/1M vs $3/1M regular — vẫn giảm 90%
 
-Để xem cache hit rate, check `output/llm-cost.jsonl` field `cachedInputTokens`.
+Cohere không có prompt caching API tương tự, nên `cacheSystem` flag bị provider bỏ qua khi route qua Cohere.
+
+Để xem cache hit rate, check `output/llm-cost.jsonl` field `cachedTokens`.
 
 ---
 
 ## Provider Fallback Logic
 
-Framework tự động chọn provider theo thứ tự ưu tiên (cấu hình tại `config/ai/providers.profiles.ts`):
+Framework tự động chọn provider theo thứ tự ưu tiên (cấu hình tại [`config/ai/providers.profiles.ts`](../config/ai/providers.profiles.ts)):
 
 ```
-heal task:    Anthropic Haiku 4.5 → Cohere → HuggingFace → G4F
-codegen task: Anthropic Sonnet 4.6 → Cohere → HuggingFace → G4F
-data-gen:     Cohere → HuggingFace → Anthropic Haiku → G4F
+heal task:     Cohere command-a → Anthropic Haiku → G4F
+codegen task:  Cohere command-a → Anthropic Sonnet → Anthropic Haiku
+data-gen:      Cohere command-a → Anthropic Haiku
+review:        Anthropic Haiku → Cohere
 ```
 
 Provider bị skip khi:
-- Circuit breaker đang **open** (3 failures liên tiếp → cooldown)
-- **Rate limit** đạt ngưỡng (Cohere 1000 calls/month, HF ~30k tokens/day)
-- **Budget** vượt `MAX_DAILY_BUDGET_USD`
-- Key không được cấu hình
+- Circuit breaker đang **open** (3 failures liên tiếp → cooldown 60s, gấp đôi mỗi lần fail half-open, max 5 phút)
+- **Rate limit** đạt ngưỡng (Cohere 1000 calls/month, HF ~30k tokens/day) — kiểm tra qua `RateLimitTracker`
+- **Budget** vượt `MAX_DAILY_BUDGET_USD` (chỉ tính cost Anthropic — Cohere/HF/G4F = $0)
+- Key không được cấu hình (`isConfigured()` returns false)
 
-Nếu tất cả providers bị skip → throw error, không gọi LLM.
+Nếu tất cả providers bị skip → throw `ProviderError` "all providers failed for task=...".
 
 ---
 
@@ -249,8 +253,9 @@ Tăng `MAX_DAILY_BUDGET_USD` hoặc chạy `npm run report:clean` để reset (C
 
 **Self-healing không kick in?**
 1. Kiểm tra `AI_HEAL_ENABLED=true` trong env
-2. Kiểm tra `ANTHROPIC_API_KEY` không trống
-3. Xem console: "heal plugin disabled" nghĩa là key missing
+2. Kiểm tra ít nhất 1 trong `COHERE_API_KEY` / `ANTHROPIC_API_KEY` không trống
+3. Xem console: "heal plugin disabled" nghĩa là `appConfig.ai.healEnabled === false` (env var chưa set)
+4. Xem `output/heal-events.jsonl` — nếu có entry với `reason: "no provider configured"` → key thiếu
 
 **Gen page output compile lỗi?**
 Pipeline tự retry 2 lần với TypeScript error làm feedback. Nếu vẫn fail sau 2 lần:
@@ -258,7 +263,7 @@ Pipeline tự retry 2 lần với TypeScript error làm feedback. Nếu vẫn fa
 2. Sửa tay phần bị lỗi (thường là import path hoặc type mismatch nhỏ)
 
 **LLM gọi timeout?**
-Anthropic `BaseProvider` retry exponential-backoff (30s timeout/call, max 3 attempts). Nếu vẫn timeout → circuit breaker mở → tự fallback sang Cohere. Check `output/llm-cost.jsonl` để xem provider nào được dùng.
+`BaseProvider` retry exponential-backoff (30s timeout/call, max 3 attempts) cho mọi provider. Nếu vẫn timeout → circuit breaker mở → tự fallback sang provider tiếp theo trong chain (Cohere → Anthropic → HF/G4F). Check `output/llm-cost.jsonl` field `provider` để xem ai được dùng. Codegen task có timeout dài hơn (`timeoutMs: 120_000`) vì output dài.
 
 **G4F trả output không dùng được?**
 G4F là community gateway, chất lượng không ổn định. Nếu thấy logs "G4F response malformed" thường xuyên → bỏ G4F khỏi fallback chain trong `config/ai/providers.profiles.ts`.

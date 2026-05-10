@@ -25,7 +25,7 @@ class ListRegisterSteps {
 
   async verifyTermsLink(): Promise<void> {
     await this.page.open();
-    this.I.seeElement(this.page.main.selectors.termsLink);
+    await this.page.main.verifyTermsLinkVisible();
   }
 }
 

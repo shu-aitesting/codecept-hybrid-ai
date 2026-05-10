@@ -29,6 +29,8 @@ ENV=dev npm test
 
 > **Lần đầu chạy E2E** mà chưa có app: xem phần [Chạy với demo app](#chạy-với-demo-app) bên dưới.
 
+> **Trạng thái** (verified 2026-05-10): typecheck pass, 249 unit tests pass, lint clean (1 warning).
+
 ---
 
 ## Tech Stack
@@ -42,9 +44,9 @@ ENV=dev npm test
 | Unit tests | Vitest 4 | AI module unit tests (zero browser) |
 | Reporting | Allure 2 + Winston | HTML report + structured logs |
 | Visual diff | Pixelmatch + pngjs | Pixel-level screenshot comparison |
-| AI — primary | Anthropic Claude (Haiku 4.5 / Sonnet 4.6) | Self-healing, code generation |
-| AI — fallback | Cohere command-r-plus, HuggingFace Qwen2.5-Coder | Free-tier fallback |
-| AI — last resort | G4F community gateway | No API key needed |
+| AI — primary | Cohere command-a-03-2025 | Self-healing, code generation (free tier 1000 calls/month) |
+| AI — fallback | Anthropic Claude (Haiku 4.5 / Sonnet 4.6) | Khi Cohere quota cạn hoặc cần chất lượng cao hơn (codegen) |
+| AI — last resort | HuggingFace Qwen2.5-Coder, G4F community gateway | Free, không API key (G4F) — uptime/quality không ổn định |
 | Locator cache | SQLite (better-sqlite3) | Self-heal cache với decay/stats |
 | Schema validation | Zod | Config, AI output, API responses |
 | CI/CD | Jenkins + Docker (Playwright image) | Matrix build: Chromium × Firefox |
@@ -78,7 +80,7 @@ codecept-hybrid/
 │   ├── api/smoke/              # @smoke @api — health checks
 │   ├── api/regression/         # @api — find, funds, tableware, user-crud
 │   ├── visual/                 # @visual — screenshot comparison
-│   └── unit/ai/                # Vitest unit tests — 21 files cho toàn bộ AI module
+│   └── unit/ai/                # Vitest unit tests — 21 files / 249 tests cho toàn bộ AI module
 ├── scripts/
 │   ├── gen.ts                  # CLI: gen page | gen api | gen scenario | gen swagger
 │   ├── heal-report.ts          # HTML dashboard từ heal-events.jsonl
@@ -178,9 +180,11 @@ Xem [.env.example](.env.example) để có đầy đủ danh sách. Các biến 
 | `API_URL` | Có | URL API endpoint |
 | `BROWSER` | Không | `chromium` (default) / `firefox` / `webkit` |
 | `HEADLESS` | Không | `false` (default local) / `true` (CI) |
-| `ANTHROPIC_API_KEY` | Chỉ khi dùng AI | Claude API key |
+| `COHERE_API_KEY` | Khuyến nghị | Cohere API key — primary provider (free tier 1000 calls/month) |
+| `ANTHROPIC_API_KEY` | Tuỳ chọn | Claude API key — fallback cho codegen quality cao + heal khi Cohere down |
+| `HF_TOKEN` | Tuỳ chọn | HuggingFace token — fallback cuối (free ~30k tokens/day) |
 | `AI_HEAL_ENABLED` | Không | `true` để bật self-healing |
-| `MAX_DAILY_BUDGET_USD` | Không | Default: `5` |
+| `MAX_DAILY_BUDGET_USD` | Không | Default: `5` (chỉ tính cost cho Anthropic — Cohere/HF/G4F = $0) |
 
 ---
 

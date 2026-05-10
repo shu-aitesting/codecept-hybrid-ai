@@ -8,7 +8,6 @@ type loginPage = typeof import('./src/ui/pages/LoginPage');
 type dashboardPage = typeof import('./src/ui/pages/DashboardPage');
 type authSteps = typeof import('./src/ui/steps/AuthSteps');
 type landingSteps = typeof import('./src/ui/steps/LandingSteps');
-type registerSteps = typeof import('./src/ui/steps/RegisterSteps');
 type listRegisterSteps = typeof import('./src/ui/steps/ListRegisterSteps');
 type landingPage = typeof import('./src/ui/pages/LandingPage');
 type RestHelper = import('./src/core/helpers/RestHelper');
@@ -31,7 +30,6 @@ declare namespace CodeceptJS {
     dashboardPage: dashboardPage;
     authSteps: authSteps;
     landingSteps: landingSteps;
-    registerSteps: registerSteps;
     listRegisterSteps: listRegisterSteps;
     findAListSteps: findAListSteps;
     landingPage: landingPage;

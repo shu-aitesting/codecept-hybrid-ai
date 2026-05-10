@@ -10,7 +10,7 @@
 - **RestClient** (Playwright-style API client, custom) — API testing layer
 - **TypeScript** 5.9 — ngôn ngữ chính
 - **Pattern**: Hybrid — **Page Fragments** (UI components) + **Step Objects** (business workflows)
-- **LLM**: Anthropic Claude (primary) + Cohere/HuggingFace/G4F (free tier fallback) → tối ưu chi phí
+- **LLM**: Cohere `command-a-03-2025` primary (free 1000 calls/month) + Anthropic Claude Haiku/Sonnet fallback (cost cao, prompt cache ephemeral) + HuggingFace Qwen2.5-Coder + G4F last-resort → tối ưu chi phí. Xem [config/ai/providers.profiles.ts](config/ai/providers.profiles.ts) cho task→chain mapping. *(Có thể đảo primary/fallback nếu team ưu tiên chất lượng codegen Sonnet 4.6 hơn cost.)*
 
 **Tham chiếu framework hiện có** tại `../playwright/`:
 - Đã có sẵn `RestClient` Playwright-style: `playwright/src/helpers/api/rest/RestClient.ts`, `RestRequestBuilder.ts`, `CurlConverter.ts`
@@ -386,11 +386,11 @@ Trong test chỉ cần `I.loginAs('admin')` — không care low-level locators.
 
 **Làm gì**: Xây `src/ai/providers/` thành **gateway thật sự** chứ không phải thư mục chứa 4 file SDK wrapper:
 - **`BaseProvider`** abstract — retry exponential-backoff + jitter, normalize lỗi (rate-limit / timeout / auth / server), token counting.
-- **4 providers** kế thừa: Anthropic Claude (Haiku 4.5 default + Sonnet 4.6 cho task khó, **bật prompt caching `cache_control: ephemeral`** — TTL 5 phút), Cohere (command-r-plus), HuggingFace (Qwen2.5-Coder-32B), G4F (axios, last resort).
+- **4 providers** kế thừa: Cohere (`command-a-03-2025`, primary cho cost), Anthropic Claude (Haiku 4.5 + Sonnet 4.6 cho codegen quality, **bật prompt caching `cache_control: ephemeral`** — TTL 5 phút), HuggingFace (Qwen2.5-Coder-32B), G4F (axios, last resort).
 - **`CircuitBreaker`** — open sau 3 failures liên tiếp/provider, half-open sau 60s cooldown → tránh chờ Anthropic timeout 30s mỗi test khi API down.
 - **`CostMeter` + `BudgetGuard`** — log $$$/call vào `output/llm-cost.jsonl`, abort run nếu vượt `MAX_DAILY_BUDGET_USD`.
 - **`StructuredOutputParser`** — wrap LLM call với zod schema, retry với "fix this JSON" prompt nếu parse fail.
-- **`TaskAwareRouter`** — config `providers.profiles.ts` định nghĩa `heal` (Haiku, temp 0, maxTokens 256), `codegen` (Sonnet, temp 0.2, maxTokens 4096), `data-gen` (Cohere, temp 0.7). Pick provider chain theo task name.
+- **`TaskAwareRouter`** — config `providers.profiles.ts` định nghĩa `heal` (Cohere primary → Anthropic Haiku → G4F, temp 0, maxTokens 256), `codegen` (Cohere primary → Anthropic Sonnet → Anthropic Haiku, temp 0.2, maxTokens 8192, cacheSystem true), `data-gen` (Cohere primary → Anthropic Haiku, temp 0.7), `review` (Anthropic Haiku → Cohere). Pick provider chain theo task name.
 - **`MockProvider`** — fixture-based, zero API call, cho unit test agents.
 - **`DomSanitizer`** (util dùng chung cho cả heal + codegen): strip `<script>`/`<style>`/`<svg>`/`<iframe>`/comments + tracking attrs (`data-gtm-*`, `on*`, inline `style`) + truncate base64 + collapse whitespace + trim long class chains. Raw DOM 50KB → ~5KB skeleton → tiết kiệm 70-90% token mỗi heal call.
 - **`SelfHealEngine` v2**: 4-phase. Phase 0 = cache lookup. Phase 1 = sanitize DOM xung quanh failed selector (focused mode). Phase 2 = LLM gen 3-5 candidates. Phase 3 = verify từng candidate trên DOM thật (chọn unique match) → tránh hallucinated selector.

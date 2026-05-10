@@ -31,8 +31,8 @@ cp .env.example .env.dev
 
 ```bash
 npm run typecheck        # phải pass — không có lỗi TypeScript
-npm run lint             # phải pass
-npm run test:unit        # 23 tests, không cần browser hay server
+npm run lint             # phải pass (1 warning ở scripts/generate-allure-report.ts là acceptable)
+npm run test:unit        # 249 tests qua 21 files, không cần browser hay server
 ```
 
 **Chạy E2E (cần app đang chạy):**
@@ -71,8 +71,9 @@ npm run report:allure               # mở Allure HTML report
    - Step Object gọi methods của Page/Fragment bằng ngôn ngữ nghiệp vụ
    - Test đọc `authSteps.loginAs('admin')` — không thấy selector nào
 
-5. `tests/ui/smoke/login.test.ts`
+5. `tests/ui/smoke/landing.test.ts` / `tests/ui/smoke/findalist.test.ts`
    - Test file ngắn, chỉ gọi step object — đây là mục tiêu của pattern
+   - (`login.test.ts` hiện đang comment-out trong khi chờ app demo có form login `[data-testid="login-form"]`)
 
 **Thực hành:** Mở DevTools trên app đang test, tìm 1 component (ví dụ search bar, cart badge). Note lại:
 - Root container CSS selector
@@ -197,7 +198,7 @@ Mở `src/ui/steps/AuthSteps.ts`, xem pattern `loginAs()`. Thêm method tương 
 
 ### Mục tiêu: dùng `gen page` CLI để bootstrap Fragment + Page + Test từ HTML
 
-**Yêu cầu:** cần `ANTHROPIC_API_KEY` trong `.env.dev`.
+**Yêu cầu:** cần `COHERE_API_KEY` (primary, free 1000 calls/month) trong `.env.dev`. `ANTHROPIC_API_KEY` chỉ cần khi muốn dùng Sonnet 4.6 cho codegen quality cao hoặc khi Cohere quota cạn.
 
 ```bash
 # Từ URL (fetch HTML tự động)
@@ -218,7 +219,7 @@ Output sẽ tạo 3 file:
 3. Chạy typecheck: `npm run typecheck`
 4. Chạy test sinh ra: `ENV=dev npm run test:ui`
 
-**Nếu không có Anthropic key:** dùng `--dry-run` để xem pipeline hoạt động mà không gọi LLM.
+**Nếu không có key nào:** dùng `--dry-run` (hoặc `--preview`) để xem pipeline hoạt động mà không gọi LLM.
 
 ```bash
 npm run gen:page -- --url https://example.com --name Example --dry-run
@@ -340,7 +341,7 @@ A: Chạy `npx playwright install chromium` một lần.
 A: Node version cũ. Upgrade lên Node ≥ 20.
 
 **Q: Self-healing không hoạt động?**
-A: Kiểm tra `.env.dev` có `AI_HEAL_ENABLED=true` và `ANTHROPIC_API_KEY` không trống. Xem [docs/AI_FEATURES.md](AI_FEATURES.md).
+A: Kiểm tra `.env.dev` có `AI_HEAL_ENABLED=true` và ít nhất 1 trong `COHERE_API_KEY` / `ANTHROPIC_API_KEY` không trống. Xem [docs/AI_FEATURES.md](AI_FEATURES.md).
 
 **Q: Gen page output có selector sai?**
 A: LLM đoán từ HTML — selectors không phải lúc nào cũng đúng 100%. Review output và sửa tay những selector sai trước khi commit.

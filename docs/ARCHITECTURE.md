@@ -118,26 +118,29 @@ I.assertEqual(res.status, 201);
 
 ```mermaid
 flowchart LR
-  Task["Task\nheal / codegen / data-gen"] --> Router["TaskAwareRouter"]
+  Task["Task\nheal / codegen / data-gen / review"] --> Router["TaskAwareRouter"]
   Router --> BG{"BudgetGuard\nMAX_DAILY_BUDGET_USD"}
   BG -- exceeded --> ERR["BudgetExceededError"]
-  BG -- OK --> P1{"Anthropic\nCircuit Breaker?"}
-  P1 -- open --> P2{"Cohere\nRate limited?"}
-  P1 -- closed --> LLM1["Claude Haiku/Sonnet\nPrompt cache ephemeral"]
+  BG -- OK --> P1{"Cohere\nCircuit Breaker?"}
+  P1 -- closed --> LLM1["command-a-03-2025\n(free tier)"]
+  P1 -- open --> P2{"Anthropic\nRate limited?"}
+  P2 -- OK --> LLM2["Claude Haiku/Sonnet\nPrompt cache ephemeral"]
   P2 -- limited --> P3["HuggingFace\nQwen2.5-Coder"]
-  P2 -- OK --> LLM2["command-r-plus"]
   P3 --> LLM3["G4F\nlast-resort"]
   LLM1 & LLM2 & LLM3 --> CM["CostMeter\nappend llm-cost.jsonl"]
   CM --> Result["ChatResult"]
 ```
 
-**Provider profiles** (định nghĩa tại `config/ai/providers.profiles.ts`):
+**Provider profiles** (định nghĩa tại [`config/ai/providers.profiles.ts`](../config/ai/providers.profiles.ts)):
 
-| Task | Primary | Model | Temp | MaxTokens |
-|---|---|---|---|---|
-| `heal` | Anthropic | Haiku 4.5 | 0 | 256 |
-| `codegen` | Anthropic | Sonnet 4.6 | 0.2 | 4096 |
-| `data-gen` | Cohere | command-r-plus | 0.7 | 1024 |
+| Task | Primary | Fallback chain | Temp | MaxTokens | cacheSystem |
+|---|---|---|---|---|---|
+| `heal` | Cohere `command-a-03-2025` | Anthropic Haiku 4.5 → G4F | 0 | 256 | — |
+| `codegen` | Cohere `command-a-03-2025` | Anthropic Sonnet 4.6 → Anthropic Haiku 4.5 | 0.2 | 8192 | ✅ (timeout 120s) |
+| `data-gen` | Cohere `command-a-03-2025` | Anthropic Haiku 4.5 | 0.7 | 1024 | — |
+| `review` | Anthropic Haiku 4.5 | Cohere | 0 | 1024 | ✅ |
+
+**Vì sao Cohere là primary?** 1000 calls/tháng miễn phí trên `command-a-03-2025`, đủ cho hầu hết heal/codegen workflows trong dev/CI. Anthropic được giữ làm fallback chất lượng cao (Sonnet 4.6 có prompt-cache ephemeral giảm 90% chi phí input — chỉ áp dụng khi route fallback sang Anthropic). Nếu team có ngân sách và ưu tiên chất lượng, đảo `primary`/`fallback` trong `providers.profiles.ts` không phá API.
 
 ### 4.2 Circuit Breaker
 
@@ -146,7 +149,7 @@ Mỗi provider có riêng 1 `CircuitBreaker`:
 - **Open** (sau 3 failures liên tiếp) → skip provider ngay lập tức, exponential cooldown
 - **Half-open** (sau cooldown) → thử 1 probe call; success → Closed, fail → Open lại
 
-Tránh CI timeout 30s × 100 tests khi Anthropic API down.
+Tránh CI timeout 30s × 100 tests khi provider API down (Cohere primary hoặc Anthropic fallback).
 
 ### 4.3 Cost Control
 
