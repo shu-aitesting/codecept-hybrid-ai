@@ -12,6 +12,9 @@ const ConfigSchema = z.object({
   headless: z.boolean().default(false),
   adminEmail: z.string().email().optional(),
   adminPassword: z.string().optional(),
+  apiToken: z.string().optional(),
+  apiLanguage: z.string().optional(),
+  apiTimezone: z.string().optional(),
   ai: z.object({
     anthropicKey: z.string().optional(),
     cohereKey: z.string().optional(),
@@ -33,6 +36,9 @@ export const config: Config = Object.freeze(
     headless: process.env.HEADLESS === 'true',
     adminEmail: process.env.ADMIN_EMAIL || undefined,
     adminPassword: process.env.ADMIN_PASSWORD || undefined,
+    apiToken: process.env.API_TOKEN || undefined,
+    apiLanguage: process.env.API_LANGUAGE || undefined,
+    apiTimezone: process.env.API_TIMEZONE || undefined,
     ai: {
       anthropicKey: process.env.ANTHROPIC_API_KEY || undefined,
       cohereKey: process.env.COHERE_API_KEY || undefined,

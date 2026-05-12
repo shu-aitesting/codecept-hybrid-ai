@@ -1,5 +1,8 @@
 import { APIRequestContext, request } from 'playwright';
 
+import { config } from '../../core/config/ConfigLoader';
+
+import { buildAmbientHeaders } from './ambientHeaders';
 import { RestRequest } from './RestRequest';
 import { RestResponse } from './RestResponse';
 
@@ -9,16 +12,44 @@ function log(msg: string): void {
   if (DEBUG) console.log(`[RestClient] ${msg}`);
 }
 
+export interface RestClientInitOpts {
+  baseURL?: string;
+  /**
+   * Per-context default headers. Merged on top of the ambient headers
+   * (Authorization/Accept-Language/X-Timezone) built from `config`.
+   * Use this to add suite-wide custom headers without touching every service.
+   */
+  extraHTTPHeaders?: Record<string, string>;
+}
+
 export class RestClient {
   private context?: APIRequestContext;
 
-  async init(baseURL?: string): Promise<void> {
+  /**
+   * Initialize the underlying Playwright APIRequestContext. Accepts either a
+   * raw `baseURL` string (legacy form) or an options object. Ambient headers
+   * derived from runtime config are merged in first; explicit
+   * `extraHTTPHeaders` override them on a per-key basis.
+   */
+  async init(opts?: string | RestClientInitOpts): Promise<void> {
+    const normalized: RestClientInitOpts =
+      typeof opts === 'string' ? { baseURL: opts } : (opts ?? { baseURL: undefined });
+
+    const headers: Record<string, string> = {
+      ...buildAmbientHeaders(config),
+      ...normalized.extraHTTPHeaders,
+    };
+
     this.context = await request.newContext({
-      baseURL,
+      baseURL: normalized.baseURL,
+      extraHTTPHeaders: Object.keys(headers).length > 0 ? headers : undefined,
       // Allow self-signed certificates in dev/staging environments.
       ignoreHTTPSErrors: true,
     });
-    log(`Initialized with baseURL="${baseURL ?? '(none)'}"`);
+    log(
+      `Initialized baseURL="${normalized.baseURL ?? '(none)'}" ` +
+        `ambientHeaders=[${Object.keys(headers).join(', ') || 'none'}]`,
+    );
   }
 
   async dispose(): Promise<void> {

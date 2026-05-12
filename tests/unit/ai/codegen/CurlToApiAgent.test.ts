@@ -15,6 +15,7 @@ import {
   GenerationFailedError,
   GenerationPipeline,
 } from '../../../../src/ai/codegen/GenerationPipeline';
+import { classify } from '../../../../src/ai/codegen/headerClassifier';
 import { PromptLibrary } from '../../../../src/ai/prompts/PromptLibrary';
 import { BudgetGuard } from '../../../../src/ai/providers/BudgetGuard';
 import { CircuitBreaker } from '../../../../src/ai/providers/CircuitBreaker';
@@ -244,5 +245,29 @@ describe('CurlToApiAgent', () => {
 
     const { existsSync } = await import('node:fs');
     expect(existsSync(targetFile)).toBe(false);
+  });
+});
+
+describe('CurlConverter + headerClassifier integration', () => {
+  it('routes Authorization, Accept-Language, X-Timezone from a parsed cURL into ambient', () => {
+    const curl =
+      "curl -X POST 'https://api.example.com/foo' " +
+      "-H 'Authorization: Bearer xyz' " +
+      "-H 'Accept-Language: en-US' " +
+      "-H 'X-Timezone: UTC' " +
+      "-H 'X-Request-ID: r1' " +
+      '-H \'sec-ch-ua: "Chrome"\' ' +
+      "--data '{}'";
+    const req = CurlConverter.fromCurl(curl);
+    const cls = classify(req.headers);
+    expect(cls.ambient).toEqual({
+      token: 'Bearer xyz',
+      language: 'en-US',
+      timezone: 'UTC',
+    });
+    expect(cls.skipped.map((h) => h.name)).toContain('sec-ch-ua');
+    // X-Request-ID has no Swagger required signal in a cURL → optional tier.
+    expect(cls.optionalParams.map((p) => p.name)).toContain('X-Request-ID');
+    expect(cls.requiredParams).toHaveLength(0);
   });
 });

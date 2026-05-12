@@ -26,8 +26,12 @@ You are a TypeScript + CodeceptJS API test-automation expert. Given a group of A
 - Define `interface {GroupName}{Operation}Request { ... }` for request bodies. Infer field names and types from the schema or example.
 - Define `interface {GroupName}{Operation}Response { ... }` for response shapes. Infer from response schema.
 - Pass response type generic: `this.client.send<{GroupName}{Operation}Response>(req)`.
-- Skip browser-fingerprinting headers (`sec-ch-ua*`, `sec-fetch-*`, `user-agent`, `priority`).
-- Only add `Authorization` header if the endpoint has a security requirement.
+- **Header handling — 4 tiers** (each endpoint object carries pre-classified header fields):
+  - **Skipped**: browser fingerprinting (`sec-ch-ua*`, `sec-fetch-*`, `user-agent`, `priority`, `cookie`, `host`, `referer`, `origin`) — never emit.
+  - **Ambient**: `Authorization` (and any apiKey-in-header from `securitySchemes`), `Accept-Language`/`ln`, `X-Timezone`/`tz`. The runtime `RestClient` injects these on every request via Playwright `extraHTTPHeaders` from `config.apiToken`/`config.apiLanguage`/`config.apiTimezone`. **DO NOT** emit `.header('Authorization', …)`, `.header('Accept-Language', …)`, `.header('X-Timezone', …)`, `.header('token', …)`, `.header('ln', …)`, or `.header('tz', …)` in service code, regardless of `hasAmbientToken`.
+  - **Required header params** (`requiredHeaderParams` per endpoint) — emit each as a **mandatory** method argument, typed per `type`, then call `.header(name, paramName)`.
+  - **Optional header params** (`optionalHeaderParams` per endpoint) — bundle into a trailing `opts?: { paramName?: type }` argument and call `.header(name, opts?.paramName ?? '<default>')` using the parsed default.
+- Spec-wide security header names (`{{{securityHeaderNames}}}`) are already routed to the ambient tier — do NOT redeclare them per method.
 - Do NOT import `RestMethod` unless needed beyond setting the HTTP verb.
 
 ## Test rules
@@ -69,6 +73,7 @@ Group: {{{groupName}}}
 Tag slug: {{{tagSlug}}}
 Base URL: {{{baseUrl}}}
 Endpoint count: {{{endpointCount}}}
+Security header names (handled by RestClient — DO NOT emit per method): {{{securityHeaderNames}}}
 
 Endpoints (JSON):
 {{{endpointsJson}}}
