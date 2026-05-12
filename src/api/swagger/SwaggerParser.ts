@@ -319,6 +319,34 @@ export class SwaggerParser {
     return securityDefs ?? {};
   }
 
+  /**
+   * Extract HTTP header names from security schemes that send credentials in
+   * request headers. Used by the codegen header classifier to mark these as
+   * "ambient" so generated services don't redeclare them per method.
+   *
+   *   - `type: http, scheme: bearer|basic` → `Authorization`
+   *   - `type: apiKey, in: header, name: X` → `X`
+   *
+   * Schemes that don't send headers (oauth2 client-side, openIdConnect,
+   * apiKey-in-query, apiKey-in-cookie, mutualTLS) are ignored.
+   */
+  static extractSecurityHeaderNames(schemes: Record<string, unknown>): string[] {
+    const names = new Set<string>();
+    for (const scheme of Object.values(schemes ?? {})) {
+      if (!scheme || typeof scheme !== 'object') continue;
+      const s = scheme as Record<string, unknown>;
+      if (s['type'] === 'http') {
+        const httpScheme = typeof s['scheme'] === 'string' ? s['scheme'].toLowerCase() : '';
+        if (httpScheme === 'bearer' || httpScheme === 'basic') names.add('Authorization');
+        continue;
+      }
+      if (s['type'] === 'apiKey' && s['in'] === 'header' && typeof s['name'] === 'string') {
+        names.add(s['name']);
+      }
+    }
+    return [...names];
+  }
+
   // ─── Private: string helpers ──────────────────────────────────────────────
 
   /**

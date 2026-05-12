@@ -3,12 +3,13 @@ import * as path from 'node:path';
 
 import { z } from 'zod';
 
-import { SwaggerGroup, SwaggerParserResult } from '../../api/swagger/SwaggerParser';
+import { SwaggerGroup, SwaggerParser, SwaggerParserResult } from '../../api/swagger/SwaggerParser';
 
 import { createApiPostValidate } from './ApiPostValidator';
 import { GenerationCache } from './GenerationCache';
 import { GenerationPipeline, PipelineConfig, RunOpts } from './GenerationPipeline';
 import { GoldenExampleLoader } from './GoldenExampleLoader';
+import { classify, OptionalHeaderParam, RequiredHeaderParam } from './headerClassifier';
 
 // ─── I/O types ───────────────────────────────────────────────────────────────
 
@@ -19,6 +20,12 @@ export interface SwaggerToApiInput {
   outputDir?: string;
   /** Dir for test files — defaults to <cwd>/tests/api/smoke */
   testOutputDir?: string;
+  /**
+   * Top-level securitySchemes from the parsed spec. Header names derived from
+   * these schemes (Bearer / apiKey-in-header) are auto-classified as ambient
+   * so generated services don't redeclare auth headers per method.
+   */
+  securitySchemes?: Record<string, unknown>;
 }
 
 const outputSchema = z.object({
@@ -47,6 +54,10 @@ interface TemplateEndpoint {
   pathParams: Array<{ name: string; description?: string }>;
   hasQueryParams: boolean;
   queryParams: Array<{ name: string; required: boolean; description?: string }>;
+  hasHeaderParams: boolean;
+  requiredHeaderParams: RequiredHeaderParam[];
+  optionalHeaderParams: OptionalHeaderParam[];
+  hasAmbientToken: boolean;
   hasRequestBody: boolean;
   requestBodyExample: string;
   requestBodySchema: string;
@@ -75,11 +86,32 @@ function buildConfig(
 
     contextBuilder: async (input) => {
       const { group, baseUrl } = input;
+      const securityHeaderNames = SwaggerParser.extractSecurityHeaderNames(
+        input.securitySchemes ?? {},
+      );
 
       const templateEndpoints: TemplateEndpoint[] = group.endpoints.map((ep) => {
         const pathParams = ep.parameters.filter((p) => p.in === 'path');
         const queryParams = ep.parameters.filter((p) => p.in === 'query');
+        const headerParams = ep.parameters.filter((p) => p.in === 'header');
         const successResponse = ep.responses.find((r) => r.statusCode >= 200 && r.statusCode < 300);
+
+        // Apply security-scheme headers only when this operation has a security
+        // requirement (or globally — but per-operation `security: []` overrides
+        // the global default). Treat undefined as "inherit global" for safety.
+        const epHasSecurity = ep.security === undefined || ep.security.length > 0;
+        const cls = classify(
+          {},
+          {
+            swaggerHeaders: headerParams.map((p) => ({
+              name: p.name,
+              required: p.required,
+              schema: p.schema as { type?: string },
+              description: p.description,
+            })),
+            securityHeaderNames: epHasSecurity ? securityHeaderNames : [],
+          },
+        );
 
         return {
           operationId: ep.operationId,
@@ -94,6 +126,10 @@ function buildConfig(
             required: p.required,
             description: p.description,
           })),
+          hasHeaderParams: cls.requiredParams.length + cls.optionalParams.length > 0,
+          requiredHeaderParams: cls.requiredParams,
+          optionalHeaderParams: cls.optionalParams,
+          hasAmbientToken: !!cls.ambient.token,
           hasRequestBody: !!ep.requestBody,
           requestBodyExample: ep.requestBody?.example
             ? JSON.stringify(ep.requestBody.example)
@@ -115,6 +151,8 @@ function buildConfig(
         tagSlug: group.tagSlug,
         baseUrl,
         endpointCount: group.endpoints.length,
+        securityHeaderNames: JSON.stringify(securityHeaderNames),
+        hasSecurityHeaders: securityHeaderNames.length > 0,
         // Serialize endpoints as compact JSON string for the Mustache triple-stache (no escaping)
         endpointsJson: JSON.stringify(templateEndpoints, null, 2),
         goldenServiceTs: goldenLoader.load('service'),
@@ -193,6 +231,7 @@ export class SwaggerToApiAgent {
           baseUrl: parsed.baseUrl,
           outputDir,
           testOutputDir,
+          securitySchemes: parsed.securitySchemes,
         },
         runOpts,
       );

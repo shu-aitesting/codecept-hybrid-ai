@@ -399,6 +399,117 @@ describe('SwaggerParser.parse — Swagger 2.0', () => {
   });
 });
 
+// ─── Security header extraction ──────────────────────────────────────────────
+
+describe('SwaggerParser.extractSecurityHeaderNames', () => {
+  it('returns Authorization for type=http scheme=bearer', () => {
+    const names = SwaggerParser.extractSecurityHeaderNames({
+      bearerAuth: { type: 'http', scheme: 'bearer' },
+    });
+    expect(names).toEqual(['Authorization']);
+  });
+
+  it('returns Authorization for type=http scheme=basic', () => {
+    const names = SwaggerParser.extractSecurityHeaderNames({
+      basicAuth: { type: 'http', scheme: 'basic' },
+    });
+    expect(names).toEqual(['Authorization']);
+  });
+
+  it('returns the apiKey name when in: header', () => {
+    const names = SwaggerParser.extractSecurityHeaderNames({
+      apiKey: { type: 'apiKey', name: 'X-API-KEY', in: 'header' },
+    });
+    expect(names).toEqual(['X-API-KEY']);
+  });
+
+  it('skips apiKey when in: query or in: cookie', () => {
+    const names = SwaggerParser.extractSecurityHeaderNames({
+      qkey: { type: 'apiKey', name: 'k', in: 'query' },
+      ckey: { type: 'apiKey', name: 'k', in: 'cookie' },
+    });
+    expect(names).toEqual([]);
+  });
+
+  it('skips oauth2 / openIdConnect / mutualTLS', () => {
+    const names = SwaggerParser.extractSecurityHeaderNames({
+      o: { type: 'oauth2', flows: {} },
+      oic: { type: 'openIdConnect', openIdConnectUrl: 'x' },
+      mtls: { type: 'mutualTLS' },
+    });
+    expect(names).toEqual([]);
+  });
+
+  it('deduplicates Authorization across multiple http schemes', () => {
+    const names = SwaggerParser.extractSecurityHeaderNames({
+      a: { type: 'http', scheme: 'bearer' },
+      b: { type: 'http', scheme: 'basic' },
+    });
+    expect(names).toEqual(['Authorization']);
+  });
+
+  it('returns empty array for empty schemes object', () => {
+    expect(SwaggerParser.extractSecurityHeaderNames({})).toEqual([]);
+  });
+
+  it('integration: securitySchemes from a parsed OAS3 spec yields Authorization', async () => {
+    const result = await SwaggerParser.parse(tmpSpec(OAS3_FIXTURE));
+    expect(SwaggerParser.extractSecurityHeaderNames(result.securitySchemes)).toEqual([
+      'Authorization',
+    ]);
+  });
+
+  it('integration: securityDefinitions from a Swagger 2 spec yields the apiKey header name', async () => {
+    const result = await SwaggerParser.parse(tmpSpec(SWAGGER2_FIXTURE));
+    expect(SwaggerParser.extractSecurityHeaderNames(result.securitySchemes)).toEqual(['X-API-KEY']);
+  });
+});
+
+describe('SwaggerParser.parse — header parameters preserve required flag', () => {
+  it('keeps in:header parameters with their required signal', async () => {
+    const p = tmpSpec({
+      openapi: '3.0.0',
+      info: { title: 'HeaderParams', version: '1.0.0' },
+      servers: [{ url: 'https://api.test.com' }],
+      paths: {
+        '/orders': {
+          post: {
+            operationId: 'createOrder',
+            tags: ['Order'],
+            parameters: [
+              {
+                name: 'X-Request-ID',
+                in: 'header',
+                required: true,
+                schema: { type: 'string' },
+                description: 'Idempotency key',
+              },
+              {
+                name: 'X-Trace',
+                in: 'header',
+                required: false,
+                schema: { type: 'string' },
+              },
+            ],
+            responses: { '201': { description: 'Created' } },
+          },
+        },
+      },
+    });
+    const result = await SwaggerParser.parse(p);
+    const ep = result.groups
+      .find((g) => g.groupName === 'Order')!
+      .endpoints.find((e) => e.operationId === 'createOrder')!;
+    const headers = ep.parameters.filter((x) => x.in === 'header');
+    expect(headers).toHaveLength(2);
+    expect(headers.find((h) => h.name === 'X-Request-ID')).toMatchObject({
+      required: true,
+      description: 'Idempotency key',
+    });
+    expect(headers.find((h) => h.name === 'X-Trace')).toMatchObject({ required: false });
+  });
+});
+
 // ─── Untagged endpoints → Default group ──────────────────────────────────────
 
 describe('SwaggerParser.parse — untagged endpoints', () => {

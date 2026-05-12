@@ -191,6 +191,9 @@ Scenario('Find gift list with empty name returns 400', async () => {
  *  • Typed request interface: `interface XxxRequest { ... }`
  *  • Service receives `RestClient` via constructor injection
  *  • Only API-relevant headers — no browser fingerprinting (sec-ch-ua, user-agent, etc.)
+ *  • NO ambient headers (`Authorization`, `Accept-Language`, `X-Timezone`) — those are
+ *    injected once by `RestClient.init()` from `config.apiToken/apiLanguage/apiTimezone`
+ *    via Playwright `extraHTTPHeaders` and apply to every request automatically
  *  • `client.send(req)` — RestClient handles the actual HTTP call
  */
 const GOLDEN_SERVICE = `\
@@ -220,7 +223,6 @@ export class FindService {
     const req = new RestRequestBuilder()
       .post(\`\${config.apiUrl}\${GIFT_LIST_FIND_ENDPOINT}\`)
       .header('Accept', 'application/json, text/plain, */*')
-      .header('Accept-Language', 'en-US,en;q=0.9,vi;q=0.8,kk;q=0.7')
       .json(params)
       .build();
     return this.client.send<GiftListFindResponse>(req);

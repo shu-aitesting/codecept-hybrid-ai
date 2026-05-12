@@ -118,6 +118,53 @@ Writes to:
 
 ---
 
+## Header handling — 4 tiers
+
+`CurlToApiAgent` and `SwaggerToApiAgent` both run a deterministic **header classifier** ([src/ai/codegen/headerClassifier.ts](../src/ai/codegen/headerClassifier.ts)) over every parsed input. The classifier sorts each header into exactly one of four tiers, and the prompt template tells the LLM what to emit per tier.
+
+| Tier | Examples | Generated code |
+|------|----------|----------------|
+| **1. Skipped** | `sec-ch-ua*`, `sec-fetch-*`, `user-agent`, `priority`, `cookie`, `host`, `referer`, `origin`, `content-length`, `accept-encoding` | Dropped entirely |
+| **2. Ambient** | `Authorization` / `token` / `x-auth-token`, `Accept-Language` / `ln` / `lang`, `X-Timezone` / `tz` / `timezone`, plus header-typed `securitySchemes` (Bearer / apiKey-in-header) | **Not emitted in services.** Injected once by `RestClient.init()` via Playwright `extraHTTPHeaders` from `config.apiToken` / `config.apiLanguage` / `config.apiTimezone` |
+| **3. Required params** (Swagger `required: true`, non-ambient) | `X-Request-ID: required`, `X-Tenant-Id: required` | Mandatory typed method argument + `.header(name, paramName)` |
+| **4. Optional params** | `Accept`, `X-Trace`, custom non-required cURL/Swagger headers | Trailing `opts?: { paramName?: type }` arg + `.header(name, opts?.paramName ?? '<default>')` |
+
+### Configure ambient headers
+
+Set in `.env.{ENV}` (all optional):
+
+```env
+API_TOKEN=eyJhbGciOi...
+API_LANGUAGE=en-US
+API_TIMEZONE=Asia/Ho_Chi_Minh
+```
+
+`RestClient.init()` reads these via [`buildAmbientHeaders(config)`](../src/api/rest/ambientHeaders.ts) and passes them to Playwright's `apiRequest.newContext({ extraHTTPHeaders })`. Empty/unset values are skipped — unauthenticated APIs work with no `API_TOKEN`.
+
+### Override per test
+
+```ts
+await client.init({
+  baseURL: 'https://api.example.com',
+  extraHTTPHeaders: { Authorization: 'Bearer test-only-token' },
+});
+```
+
+Per-key override beats ambient — the rest of the ambient map still applies.
+
+### Override per request
+
+`RestRequestBuilder.header()` ghi đè extraHTTPHeaders ở Playwright level — useful for negative-scenario tests that need an invalid token on a single call without re-initializing the client.
+
+### Why not hardcode auth in services?
+
+- **Security**: tokens never live in the codebase
+- **Multi-env**: same service code chạy được cả dev/staging/prod chỉ bằng cách swap `.env`
+- **Multi-locale tests**: switch `API_LANGUAGE=vi` mà không cần sửa service
+- **Audit**: 1 chỗ thấy được mọi ambient header (RestClient init log)
+
+---
+
 ## Workflow: gen → validate → review → commit
 
 1. **Generate** — run với `--dry-run` trước để preview

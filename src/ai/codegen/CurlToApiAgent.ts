@@ -10,6 +10,7 @@ import { createApiPostValidate } from './ApiPostValidator';
 import { GenerationCache } from './GenerationCache';
 import { GenerationPipeline, PipelineConfig, RunOpts } from './GenerationPipeline';
 import { GoldenExampleLoader } from './GoldenExampleLoader';
+import { classify } from './headerClassifier';
 
 export interface CurlToApiInput {
   curl: string;
@@ -63,6 +64,7 @@ function buildConfig(
       const parsedUrl = new URL(req.url);
       const baseUrl = parsedUrl.origin;
       const endpoint = parsedUrl.pathname + (parsedUrl.search || '');
+      const cls = classify(req.headers);
       return {
         serviceName: input.serviceName,
         method: req.method,
@@ -70,6 +72,13 @@ function buildConfig(
         baseUrl,
         endpoint,
         headers: JSON.stringify(req.headers),
+        skippedHeaders: JSON.stringify(cls.skipped.map((h) => h.name)),
+        ambientHeaders: JSON.stringify(cls.ambient),
+        hasAmbientToken: !!cls.ambient.token,
+        hasAmbientLanguage: !!cls.ambient.language,
+        hasAmbientTimezone: !!cls.ambient.timezone,
+        requiredHeaderParams: JSON.stringify(cls.requiredParams),
+        optionalHeaderParams: JSON.stringify(cls.optionalParams),
         body: req.body ? JSON.stringify(req.body) : '{}',
         endpointDescription: inferEndpointDescription(req.method, req.url),
         goldenServiceTs: goldenLoader.load('service'),
