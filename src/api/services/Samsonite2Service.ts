@@ -23,7 +23,6 @@ export class Samsonite2Service {
     const req = new RestRequestBuilder()
       .get(`${config.apiUrl}${GIFT_LIST_FIND_ENDPOINT}`)
       .header('Accept', 'application/json, text/plain, */*')
-      .header('Accept-Language', 'en-US,en;q=0.9,vi;q=0.8,kk;q=0.7')
       .json(params)
       .build();
     return this.client.send<Samsonite2Response>(req);
