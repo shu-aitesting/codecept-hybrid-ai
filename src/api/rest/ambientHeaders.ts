@@ -6,39 +6,54 @@
  * and are injected once by `RestClient` via Playwright's `extraHTTPHeaders`,
  * NOT emitted in generated service code:
  *
- *   - Authorization: Bearer <token>   (from config.apiToken)
- *   - Accept-Language: <locale>       (from config.apiLanguage)
- *   - X-Timezone: <iana-zone>         (from config.apiTimezone)
+ *   - Token: <raw-token>              (from config.apiToken, default name 'Token')
+ *   - Lng: <locale>                   (from config.apiLanguage, default name 'Lng')
+ *   - Tz: <iana-zone>                 (from config.apiTimezone, default name 'Tz')
  *
- * Aliases below cover the common synonyms found in cURL captures and Swagger
- * specs (e.g. `ln` for language, `tz` for timezone, `token` for Authorization).
+ * Default names match the ecosystem majority (raw token, no Bearer prefix).
+ * Override via env: API_HEADER_TOKEN / API_HEADER_TOKEN_PREFIX / API_HEADER_LANGUAGE / API_HEADER_TIMEZONE
+ * Or switch to standard Bearer: API_HEADER_TOKEN=Authorization API_HEADER_TOKEN_PREFIX="Bearer "
+ *
+ * Precedence (per-kind, deterministic):
+ *   overrides arg > config.apiHeaderNames > AMBIENT_DEFAULTS
  */
-
 export type AmbientKind = 'token' | 'language' | 'timezone';
 
 export const AMBIENT_TOKEN_ALIASES = [
+  'token',
   'authorization',
   'x-auth-token',
-  'token',
   'auth-token',
   'x-token',
+  'x-api-key',
+  'api-key',
 ] as const;
 
 export const AMBIENT_LANGUAGE_ALIASES = [
-  'accept-language',
-  'ln',
-  'x-language',
+  'lng',
   'lang',
+  'language',
+  'accept-language',
+  'x-language',
   'x-lang',
+  'ln',
 ] as const;
 
 export const AMBIENT_TIMEZONE_ALIASES = [
-  'x-timezone',
   'tz',
-  'time-zone',
-  'x-tz',
   'timezone',
+  'time-zone',
+  'x-timezone',
+  'x-tz',
 ] as const;
+
+/** Canonical defaults when no env config or per-test overrides are provided. */
+export const AMBIENT_DEFAULTS = {
+  token: 'Token',
+  tokenPrefix: '',
+  language: 'Lng',
+  timezone: 'Tz',
+} as const;
 
 /**
  * Headers that should never propagate from cURL/Swagger into generated code.
@@ -70,21 +85,71 @@ export function ambientKind(name: string): AmbientKind | null {
   return null;
 }
 
+export interface AmbientHeaderOverrides {
+  token?: string;
+  tokenPrefix?: string;
+  language?: string;
+  timezone?: string;
+}
+
 export interface AmbientConfigSlice {
   apiToken?: string;
   apiLanguage?: string;
   apiTimezone?: string;
+  apiHeaderNames?: {
+    token?: string;
+    tokenPrefix?: string;
+    language?: string;
+    timezone?: string;
+  };
 }
 
 /**
- * Build the canonical ambient-headers map for Playwright `extraHTTPHeaders`
- * from runtime config. Empty/undefined values are skipped so requests stay
- * clean when a slot isn't configured (e.g. unauthenticated APIs).
+ * Resolve the final header name for a given ambient kind using precedence:
+ *   overrides > config.apiHeaderNames > AMBIENT_DEFAULTS
  */
-export function buildAmbientHeaders(c: AmbientConfigSlice): Record<string, string> {
+export function resolveAmbientName(
+  kind: AmbientKind,
+  c: AmbientConfigSlice,
+  overrides?: AmbientHeaderOverrides,
+): string {
+  if (kind === 'token') {
+    return overrides?.token ?? c.apiHeaderNames?.token ?? AMBIENT_DEFAULTS.token;
+  }
+  if (kind === 'language') {
+    return overrides?.language ?? c.apiHeaderNames?.language ?? AMBIENT_DEFAULTS.language;
+  }
+  return overrides?.timezone ?? c.apiHeaderNames?.timezone ?? AMBIENT_DEFAULTS.timezone;
+}
+
+/**
+ * Build the canonical ambient-headers map for Playwright `extraHTTPHeaders`.
+ * Empty/undefined config values are skipped so requests stay clean when a
+ * slot isn't configured (e.g. unauthenticated APIs, no language header needed).
+ *
+ * @param c         Runtime config slice (apiToken, apiLanguage, apiTimezone, apiHeaderNames)
+ * @param overrides Per-test header name/prefix overrides
+ */
+export function buildAmbientHeaders(
+  c: AmbientConfigSlice,
+  overrides?: AmbientHeaderOverrides,
+): Record<string, string> {
   const h: Record<string, string> = {};
-  if (c.apiToken) h['Authorization'] = `Bearer ${c.apiToken}`;
-  if (c.apiLanguage) h['Accept-Language'] = c.apiLanguage;
-  if (c.apiTimezone) h['X-Timezone'] = c.apiTimezone;
+
+  if (c.apiToken) {
+    const name = resolveAmbientName('token', c, overrides);
+    const prefix =
+      overrides?.tokenPrefix ?? c.apiHeaderNames?.tokenPrefix ?? AMBIENT_DEFAULTS.tokenPrefix;
+    h[name] = `${prefix}${c.apiToken}`;
+  }
+
+  if (c.apiLanguage) {
+    h[resolveAmbientName('language', c, overrides)] = c.apiLanguage;
+  }
+
+  if (c.apiTimezone) {
+    h[resolveAmbientName('timezone', c, overrides)] = c.apiTimezone;
+  }
+
   return h;
 }

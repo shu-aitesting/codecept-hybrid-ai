@@ -1,3 +1,5 @@
+import { schemaValidator } from './SchemaValidator';
+
 export class RestResponse<T = unknown> {
   constructor(
     public readonly status: number,
@@ -50,6 +52,24 @@ export class RestResponse<T = unknown> {
     const raw = typeof this.body === 'string' ? this.body : JSON.stringify(this.body);
     if (!raw.includes(substring)) {
       throw new Error(`[RestResponse] Body does not contain "${substring}"`);
+    }
+    return this;
+  }
+
+  expectSchema(schema: object): this {
+    const result = schemaValidator.validate(schema, this.body);
+    if (!result.valid) {
+      throw new Error(`[RestResponse] Schema validation failed:\n${result.errors.join('\n')}`);
+    }
+    return this;
+  }
+
+  expectContentType(expected: string): this {
+    const actual = this.headers['content-type'] ?? '';
+    if (!actual.startsWith(expected)) {
+      throw new Error(
+        `[RestResponse] Content-Type: expected "${expected}", got "${actual || '(missing)'}"`,
+      );
     }
     return this;
   }

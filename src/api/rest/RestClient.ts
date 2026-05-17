@@ -2,7 +2,12 @@ import { APIRequestContext, request } from 'playwright';
 
 import { config } from '../../core/config/ConfigLoader';
 
-import { buildAmbientHeaders } from './ambientHeaders';
+import {
+  AmbientHeaderOverrides,
+  AmbientKind,
+  buildAmbientHeaders,
+  resolveAmbientName,
+} from './ambientHeaders';
 import { RestRequest } from './RestRequest';
 import { RestResponse } from './RestResponse';
 
@@ -15,11 +20,25 @@ function log(msg: string): void {
 export interface RestClientInitOpts {
   baseURL?: string;
   /**
-   * Per-context default headers. Merged on top of the ambient headers
-   * (Authorization/Accept-Language/X-Timezone) built from `config`.
-   * Use this to add suite-wide custom headers without touching every service.
+   * Per-context default headers merged on top of ambient headers.
+   * Use for suite-wide custom headers without touching every service.
    */
   extraHTTPHeaders?: Record<string, string>;
+  /**
+   * Ambient header kinds to suppress — useful in negative-auth test scenarios.
+   * The resolved header name (after precedence chain) is removed from the context.
+   */
+  skipAmbient?: AmbientKind[];
+  /**
+   * Override the resolved header names/prefix for ambient slots at the per-test level.
+   * Precedence: headerOverrides > config.apiHeaderNames > AMBIENT_DEFAULTS
+   */
+  headerOverrides?: AmbientHeaderOverrides;
+  /**
+   * Context-level failOnStatusCode for Playwright (default: false so 4xx/5xx
+   * responses are returned as RestResponse instead of throwing).
+   */
+  failOnStatusCode?: boolean;
 }
 
 export class RestClient {
@@ -27,25 +46,34 @@ export class RestClient {
 
   /**
    * Initialize the underlying Playwright APIRequestContext. Accepts either a
-   * raw `baseURL` string (legacy form) or an options object. Ambient headers
-   * derived from runtime config are merged in first; explicit
-   * `extraHTTPHeaders` override them on a per-key basis.
+   * raw `baseURL` string (legacy form) or an options object.
    */
   async init(opts?: string | RestClientInitOpts): Promise<void> {
     const normalized: RestClientInitOpts =
       typeof opts === 'string' ? { baseURL: opts } : (opts ?? { baseURL: undefined });
 
+    const ambient = buildAmbientHeaders(config, normalized.headerOverrides);
+
+    // Remove ambient entries for suppressed kinds — name resolved via same precedence.
+    if (normalized.skipAmbient) {
+      for (const kind of normalized.skipAmbient) {
+        const resolvedKey = resolveAmbientName(kind, config, normalized.headerOverrides);
+        delete ambient[resolvedKey];
+      }
+    }
+
     const headers: Record<string, string> = {
-      ...buildAmbientHeaders(config),
+      ...ambient,
       ...normalized.extraHTTPHeaders,
     };
 
     this.context = await request.newContext({
       baseURL: normalized.baseURL,
       extraHTTPHeaders: Object.keys(headers).length > 0 ? headers : undefined,
-      // Allow self-signed certificates in dev/staging environments.
       ignoreHTTPSErrors: true,
+      failOnStatusCode: normalized.failOnStatusCode ?? false,
     });
+
     log(
       `Initialized baseURL="${normalized.baseURL ?? '(none)'}" ` +
         `ambientHeaders=[${Object.keys(headers).join(', ') || 'none'}]`,
@@ -81,7 +109,6 @@ export class RestClient {
     try {
       body = (await response.json()) as T;
     } catch {
-      // Non-JSON responses (plain text, HTML error pages) are kept as strings.
       body = (await response.text()) as unknown as T;
     }
 
