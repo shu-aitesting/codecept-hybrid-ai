@@ -9,7 +9,12 @@ vi.mock('playwright', () => ({
 }));
 
 // Mock the config module so we control ambient header inputs without env files.
-const configMock: { apiToken?: string; apiLanguage?: string; apiTimezone?: string } = {};
+const configMock: {
+  apiToken?: string;
+  apiLanguage?: string;
+  apiTimezone?: string;
+  apiHeaderNames?: { token?: string; tokenPrefix?: string; language?: string; timezone?: string };
+} = {};
 vi.mock('../../../../src/core/config/ConfigLoader', () => ({
   config: new Proxy(configMock, {
     get: (target, key) => target[key as keyof typeof target],
@@ -31,6 +36,7 @@ beforeEach(() => {
   configMock.apiToken = undefined;
   configMock.apiLanguage = undefined;
   configMock.apiTimezone = undefined;
+  configMock.apiHeaderNames = undefined;
 });
 
 afterEach(() => {
@@ -45,25 +51,23 @@ describe('RestClient.init — ambient headers', () => {
     expect(newContextMock.mock.calls[0][0].extraHTTPHeaders).toBeUndefined();
   });
 
-  it('injects Authorization Bearer when config.apiToken is set', async () => {
+  it('injects Token raw (no Bearer) when config.apiToken is set — default ecosystem', async () => {
     configMock.apiToken = 'abc';
     const c = new RestClient();
     await c.init();
-    expect(newContextMock.mock.calls[0][0].extraHTTPHeaders).toEqual({
-      Authorization: 'Bearer abc',
-    });
+    expect(newContextMock.mock.calls[0][0].extraHTTPHeaders).toEqual({ Token: 'abc' });
   });
 
-  it('injects all three ambient headers when all slots are set', async () => {
+  it('injects all three ambient headers with default names Token/Lng/Tz', async () => {
     configMock.apiToken = 'tok';
     configMock.apiLanguage = 'vi';
     configMock.apiTimezone = 'UTC';
     const c = new RestClient();
     await c.init();
     expect(newContextMock.mock.calls[0][0].extraHTTPHeaders).toEqual({
-      Authorization: 'Bearer tok',
-      'Accept-Language': 'vi',
-      'X-Timezone': 'UTC',
+      Token: 'tok',
+      Lng: 'vi',
+      Tz: 'UTC',
     });
   });
 
@@ -73,7 +77,7 @@ describe('RestClient.init — ambient headers', () => {
     await c.init('https://api.example.com');
     const opts = newContextMock.mock.calls[0][0];
     expect(opts.baseURL).toBe('https://api.example.com');
-    expect(opts.extraHTTPHeaders).toEqual({ 'Accept-Language': 'en' });
+    expect(opts.extraHTTPHeaders).toEqual({ Lng: 'en' });
   });
 
   it('lets explicit extraHTTPHeaders override ambient on a per-key basis', async () => {
@@ -81,10 +85,10 @@ describe('RestClient.init — ambient headers', () => {
     const c = new RestClient();
     await c.init({
       baseURL: 'https://x',
-      extraHTTPHeaders: { Authorization: 'Bearer override', 'X-Custom': '1' },
+      extraHTTPHeaders: { Token: 'override', 'X-Custom': '1' },
     });
     expect(newContextMock.mock.calls[0][0].extraHTTPHeaders).toEqual({
-      Authorization: 'Bearer override',
+      Token: 'override',
       'X-Custom': '1',
     });
   });
@@ -93,5 +97,45 @@ describe('RestClient.init — ambient headers', () => {
     const c = new RestClient();
     await c.init();
     expect(newContextMock.mock.calls[0][0].ignoreHTTPSErrors).toBe(true);
+  });
+
+  it('always passes failOnStatusCode=false by default', async () => {
+    const c = new RestClient();
+    await c.init();
+    expect(newContextMock.mock.calls[0][0].failOnStatusCode).toBe(false);
+  });
+
+  it('skipAmbient:["token"] removes token header from context', async () => {
+    configMock.apiToken = 'secret';
+    configMock.apiLanguage = 'vi';
+    const c = new RestClient();
+    await c.init({ skipAmbient: ['token'] });
+    // Token removed, Lng stays
+    expect(newContextMock.mock.calls[0][0].extraHTTPHeaders).toEqual({ Lng: 'vi' });
+  });
+
+  it('skipAmbient:["language"] removes language header from context', async () => {
+    configMock.apiToken = 'tok';
+    configMock.apiLanguage = 'vi';
+    const c = new RestClient();
+    await c.init({ skipAmbient: ['language'] });
+    expect(newContextMock.mock.calls[0][0].extraHTTPHeaders).toEqual({ Token: 'tok' });
+  });
+
+  it('headerOverrides changes emitted token header name', async () => {
+    configMock.apiToken = 'mykey';
+    const c = new RestClient();
+    await c.init({ headerOverrides: { token: 'X-API-Key', tokenPrefix: '' } });
+    expect(newContextMock.mock.calls[0][0].extraHTTPHeaders).toEqual({ 'X-API-Key': 'mykey' });
+  });
+
+  it('config.apiHeaderNames switches to Authorization Bearer when env overrides', async () => {
+    configMock.apiToken = 'tok';
+    configMock.apiHeaderNames = { token: 'Authorization', tokenPrefix: 'Bearer ' };
+    const c = new RestClient();
+    await c.init();
+    expect(newContextMock.mock.calls[0][0].extraHTTPHeaders).toEqual({
+      Authorization: 'Bearer tok',
+    });
   });
 });

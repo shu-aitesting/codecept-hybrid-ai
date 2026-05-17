@@ -15,6 +15,14 @@ const ConfigSchema = z.object({
   apiToken: z.string().optional(),
   apiLanguage: z.string().optional(),
   apiTimezone: z.string().optional(),
+  apiHeaderNames: z
+    .object({
+      token: z.string().default('Token'),
+      tokenPrefix: z.string().default(''),
+      language: z.string().default('Lng'),
+      timezone: z.string().default('Tz'),
+    })
+    .default({}),
   ai: z.object({
     anthropicKey: z.string().optional(),
     cohereKey: z.string().optional(),
@@ -39,6 +47,12 @@ export const config: Config = Object.freeze(
     apiToken: process.env.API_TOKEN || undefined,
     apiLanguage: process.env.API_LANGUAGE || undefined,
     apiTimezone: process.env.API_TIMEZONE || undefined,
+    apiHeaderNames: {
+      token: process.env.API_HEADER_TOKEN || undefined,
+      tokenPrefix: process.env.API_HEADER_TOKEN_PREFIX ?? '',
+      language: process.env.API_HEADER_LANGUAGE || undefined,
+      timezone: process.env.API_HEADER_TIMEZONE || undefined,
+    },
     ai: {
       anthropicKey: process.env.ANTHROPIC_API_KEY || undefined,
       cohereKey: process.env.COHERE_API_KEY || undefined,
