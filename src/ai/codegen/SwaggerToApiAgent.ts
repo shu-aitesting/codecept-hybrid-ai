@@ -1,211 +1,201 @@
 import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import { z } from 'zod';
 
-import { SwaggerGroup, SwaggerParser, SwaggerParserResult } from '../../api/swagger/SwaggerParser';
+import type { Config } from '@core/config/ConfigLoader';
+
+import { AMBIENT_DEFAULTS } from '@api/rest/ambientHeaders';
+import { swaggerToModel } from '@api/swagger/SwaggerEndpointAdapter';
+import { SwaggerGroup, SwaggerParserResult } from '@api/swagger/SwaggerParser';
+
+import { ScenarioEnricher } from '@ai/codegen/shared/ScenarioEnricher';
+import { SwaggerNegativeStrategy } from '@ai/codegen/shared/strategies/SwaggerNegativeStrategy';
+import { renderService } from '@ai/codegen/shared/templates/ServiceTemplate';
+import { RenderablePlan, renderTest } from '@ai/codegen/shared/templates/TestTemplate';
+import { TestCasePlan } from '@ai/codegen/shared/TestCasePlan';
+import { TestCasePlanner } from '@ai/codegen/shared/TestCasePlanner';
+import { DataContext } from '@ai/data/DataContext';
+import { DataFactory } from '@ai/data/DataFactory';
 
 import { createApiPostValidate } from './ApiPostValidator';
 import { GenerationCache } from './GenerationCache';
-import { GenerationPipeline, PipelineConfig, RunOpts } from './GenerationPipeline';
-import { GoldenExampleLoader } from './GoldenExampleLoader';
-import { classify, OptionalHeaderParam, RequiredHeaderParam } from './headerClassifier';
-
-// ─── I/O types ───────────────────────────────────────────────────────────────
 
 export interface SwaggerToApiInput {
   group: SwaggerGroup;
   baseUrl: string;
-  /** Root dir for service files — defaults to <cwd>/src/api */
   outputDir?: string;
-  /** Dir for test files — defaults to <cwd>/tests/api/smoke */
   testOutputDir?: string;
-  /**
-   * Top-level securitySchemes from the parsed spec. Header names derived from
-   * these schemes (Bearer / apiKey-in-header) are auto-classified as ambient
-   * so generated services don't redeclare auth headers per method.
-   */
+  /** Top-level securitySchemes from the parsed spec. */
   securitySchemes?: Record<string, unknown>;
+  /** Global security requirements from the parsed spec. */
+  globalSecurity?: Array<Record<string, string[]>>;
 }
 
 const outputSchema = z.object({
   serviceTs: z.string().min(1),
   testTs: z.string().min(1),
 });
-
 export type SwaggerToApiOutput = z.infer<typeof outputSchema>;
 
-// ─── Agent deps (injectable for unit tests) ───────────────────────────────────
+/** Options controlling agent behaviour — passed at construction time. */
+export interface AgentOpts {
+  requiredHeaders?: string[];
+  authNegativeCases?: 'missing' | 'invalid' | 'both';
+  /** Glob/operationId patterns to skip. */
+  exclude?: string[];
+  /** Fixed seed for DataFactory — overrides per-plan hashes. */
+  seed?: number;
+  includeOptional?: boolean;
+  /** Skip ScenarioEnricher LLM call; use auto-generated titles instead. */
+  noLlm?: boolean;
+}
+
+/** Per-run options (backward-compat with old GenerationPipeline RunOpts). */
+export interface RunOpts {
+  dryRun?: boolean;
+  skipCache?: boolean;
+  /** Kept for API compatibility; not used in new implementation. */
+  maxRetries?: number;
+}
 
 interface AgentDeps {
-  pipeline?: GenerationPipeline<SwaggerToApiInput, SwaggerToApiOutput>;
-  goldenLoader?: GoldenExampleLoader;
+  enricher?: ScenarioEnricher;
+  dataFactory?: DataFactory;
   postValidate?: (files: SwaggerToApiOutput) => Promise<string[]>;
+  cache?: GenerationCache;
+  /** Injectable config for testing — avoids loading ConfigLoader at module evaluation time. */
+  apiHeaderNames?: Config['apiHeaderNames'];
 }
 
-// ─── Endpoint shape passed to the Mustache template ──────────────────────────
-
-interface TemplateEndpoint {
-  operationId: string;
-  method: string;
-  path: string;
-  summary: string;
-  hasPathParams: boolean;
-  pathParams: Array<{ name: string; description?: string }>;
-  hasQueryParams: boolean;
-  queryParams: Array<{ name: string; required: boolean; description?: string }>;
-  hasHeaderParams: boolean;
-  requiredHeaderParams: RequiredHeaderParam[];
-  optionalHeaderParams: OptionalHeaderParam[];
-  hasAmbientToken: boolean;
-  hasRequestBody: boolean;
-  requestBodyExample: string;
-  requestBodySchema: string;
-  successStatus: number;
-  responseSchema: string;
-  isReadOnly: boolean;
-  deprecated: boolean;
+function planCacheKey(planIds: string[], seed?: number): string {
+  return crypto
+    .createHash('sha256')
+    .update([...planIds].sort().join(',') + ':' + (seed ?? ''))
+    .digest('hex');
 }
 
-// ─── Pipeline config builder ──────────────────────────────────────────────────
-
-function buildConfig(
-  deps: AgentDeps,
-  goldenLoader: GoldenExampleLoader,
-): PipelineConfig<SwaggerToApiInput, SwaggerToApiOutput> {
-  return {
-    agentName: 'swagger-to-api',
-    promptTemplate: 'swagger-to-api',
-    outputSchema,
-
-    inputHasher: (input) =>
-      crypto
-        .createHash('sha256')
-        .update(`${input.group.groupName}:${JSON.stringify(input.group.endpoints)}`)
-        .digest('hex'),
-
-    contextBuilder: async (input) => {
-      const { group, baseUrl } = input;
-      const securityHeaderNames = SwaggerParser.extractSecurityHeaderNames(
-        input.securitySchemes ?? {},
+function matchesExclude(operationId: string, patterns: string[]): boolean {
+  return patterns.some((p) => {
+    if (p.includes('*')) {
+      const re = new RegExp(
+        '^' + p.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$',
       );
-
-      const templateEndpoints: TemplateEndpoint[] = group.endpoints.map((ep) => {
-        const pathParams = ep.parameters.filter((p) => p.in === 'path');
-        const queryParams = ep.parameters.filter((p) => p.in === 'query');
-        const headerParams = ep.parameters.filter((p) => p.in === 'header');
-        const successResponse = ep.responses.find((r) => r.statusCode >= 200 && r.statusCode < 300);
-
-        // Apply security-scheme headers only when this operation has a security
-        // requirement (or globally — but per-operation `security: []` overrides
-        // the global default). Treat undefined as "inherit global" for safety.
-        const epHasSecurity = ep.security === undefined || ep.security.length > 0;
-        const cls = classify(
-          {},
-          {
-            swaggerHeaders: headerParams.map((p) => ({
-              name: p.name,
-              required: p.required,
-              schema: p.schema as { type?: string },
-              description: p.description,
-            })),
-            securityHeaderNames: epHasSecurity ? securityHeaderNames : [],
-          },
-        );
-
-        return {
-          operationId: ep.operationId,
-          method: ep.method,
-          path: ep.path,
-          summary: ep.summary ?? `${ep.method} ${ep.path}`,
-          hasPathParams: pathParams.length > 0,
-          pathParams: pathParams.map((p) => ({ name: p.name, description: p.description })),
-          hasQueryParams: queryParams.length > 0,
-          queryParams: queryParams.map((p) => ({
-            name: p.name,
-            required: p.required,
-            description: p.description,
-          })),
-          hasHeaderParams: cls.requiredParams.length + cls.optionalParams.length > 0,
-          requiredHeaderParams: cls.requiredParams,
-          optionalHeaderParams: cls.optionalParams,
-          hasAmbientToken: !!cls.ambient.token,
-          hasRequestBody: !!ep.requestBody,
-          requestBodyExample: ep.requestBody?.example
-            ? JSON.stringify(ep.requestBody.example)
-            : '{}',
-          requestBodySchema: ep.requestBody?.schema
-            ? JSON.stringify(ep.requestBody.schema, null, 2)
-            : '{}',
-          successStatus: successResponse?.statusCode ?? 200,
-          responseSchema: successResponse?.schema
-            ? JSON.stringify(successResponse.schema, null, 2)
-            : '{}',
-          isReadOnly: ep.method === 'GET' || ep.method === 'HEAD',
-          deprecated: ep.deprecated,
-        };
-      });
-
-      return {
-        groupName: group.groupName,
-        tagSlug: group.tagSlug,
-        baseUrl,
-        endpointCount: group.endpoints.length,
-        securityHeaderNames: JSON.stringify(securityHeaderNames),
-        hasSecurityHeaders: securityHeaderNames.length > 0,
-        // Serialize endpoints as compact JSON string for the Mustache triple-stache (no escaping)
-        endpointsJson: JSON.stringify(templateEndpoints, null, 2),
-        goldenServiceTs: goldenLoader.load('service'),
-        goldenTestTs: goldenLoader.load('test'),
-      };
-    },
-
-    outputMapper: (input, files) => {
-      const outputDir = input.outputDir ?? path.join(process.cwd(), 'src', 'api');
-      const testOutputDir =
-        input.testOutputDir ?? path.join(process.cwd(), 'tests', 'api', 'smoke');
-      const { groupName, tagSlug } = input.group;
-
-      return {
-        [path.join(outputDir, 'services', `${groupName}Service.ts`)]: files.serviceTs,
-        [path.join(testOutputDir, `${tagSlug}.test.ts`)]: files.testTs,
-      };
-    },
-
-    postValidate: deps.postValidate ?? createApiPostValidate(),
-  };
+      return re.test(operationId);
+    }
+    return operationId === p;
+  });
 }
 
-// ─── SwaggerToApiAgent ────────────────────────────────────────────────────────
+// FNV-1a-inspired integer hash for stable seed derivation from a string.
+function strHash(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function autoTitleFallback(plan: TestCasePlan): string {
+  return `${plan.endpoint.method} ${plan.endpoint.path} — ${plan.kind}`;
+}
 
 /**
  * Generates a typed Service class + CodeceptJS API test file for a group of
- * Swagger/OpenAPI endpoints. Mirrors CurlToApiAgent but operates on batches
- * of endpoints grouped by tag instead of a single cURL command.
+ * Swagger/OpenAPI endpoints using the shared deterministic core.
+ * LLM is used only for Scenario titles (via ScenarioEnricher).
  *
  * Use `runAll()` to process every group in a parsed swagger spec at once.
  */
 export class SwaggerToApiAgent {
-  private readonly pipeline: GenerationPipeline<SwaggerToApiInput, SwaggerToApiOutput>;
+  private readonly enricher: ScenarioEnricher;
+  private readonly dataFactory: DataFactory;
+  private readonly postValidate: (files: SwaggerToApiOutput) => Promise<string[]>;
+  private readonly cache?: GenerationCache;
+  private readonly agentOpts: AgentOpts;
+  private readonly apiHeaderNamesOverride?: Config['apiHeaderNames'];
 
-  constructor(deps: AgentDeps = {}) {
-    const goldenLoader = deps.goldenLoader ?? new GoldenExampleLoader();
-    const config = buildConfig(deps, goldenLoader);
-    this.pipeline =
-      deps.pipeline ??
-      new GenerationPipeline(config, {
-        cache: new GenerationCache(),
-      });
+  constructor(deps: AgentDeps = {}, agentOpts: AgentOpts = {}) {
+    this.enricher = deps.enricher ?? new ScenarioEnricher();
+    this.dataFactory = deps.dataFactory ?? new DataFactory();
+    this.postValidate = deps.postValidate ?? createApiPostValidate();
+    this.cache = deps.cache;
+    this.agentOpts = agentOpts;
+    this.apiHeaderNamesOverride = deps.apiHeaderNames;
   }
 
-  /** Generate Service + Test for a single endpoint group. */
-  async run(input: SwaggerToApiInput, opts: RunOpts = {}): Promise<SwaggerToApiOutput> {
-    return this.pipeline.run(input, opts);
+  private getApiHeaderNames(): Config['apiHeaderNames'] {
+    // Fall back to AMBIENT_DEFAULTS, which matches the ConfigLoader defaults.
+    // Callers in production scripts should inject config.apiHeaderNames for env overrides.
+    return this.apiHeaderNamesOverride ?? AMBIENT_DEFAULTS;
+  }
+
+  async run(input: SwaggerToApiInput, runOpts: RunOpts = {}): Promise<SwaggerToApiOutput> {
+    // 1. Build EndpointModel[] from Swagger group
+    const models = swaggerToModel(input.group, input.securitySchemes ?? {}, input.globalSecurity, {
+      apiHeaderNames: this.getApiHeaderNames(),
+    });
+
+    // 2. Apply exclude filter on operationId
+    const filtered = this.agentOpts.exclude?.length
+      ? models.filter((ep) => !matchesExclude(ep.operationId, this.agentOpts.exclude!))
+      : models;
+
+    // 3. Plan test cases (topological sort included)
+    const strategy = new SwaggerNegativeStrategy();
+    const planner = new TestCasePlanner(strategy, {
+      requiredHeaders: this.agentOpts.requiredHeaders,
+      authNegativeCases: this.agentOpts.authNegativeCases,
+    });
+    const { plans, executionOrder } = planner.planAll(filtered);
+
+    // 4. Cache lookup — key is based on plan IDs + seed (LLM-independent)
+    const cacheKey = planCacheKey(
+      plans.map((p) => p.id),
+      this.agentOpts.seed,
+    );
+    if (!runOpts.skipCache && this.cache) {
+      const hit = this.cache.lookup('swagger-to-api', cacheKey);
+      if (hit && hit['serviceTs'] && hit['testTs']) {
+        const cached: SwaggerToApiOutput = {
+          serviceTs: hit['serviceTs'] as string,
+          testTs: hit['testTs'] as string,
+        };
+        if (!runOpts.dryRun) this.writeFiles(input, cached);
+        return cached;
+      }
+    }
+
+    // 5. Build renderable plans: payload per plan + enriched titles
+    const renderablePlans = await this.buildRenderablePlans(plans);
+
+    // 6. Render service + test files (deterministic templates)
+    const serviceTs = renderService(input.group, filtered);
+    const testTs = renderTest(input.group, renderablePlans, executionOrder);
+    const output: SwaggerToApiOutput = { serviceTs, testTs };
+
+    // 7. Post-validate
+    const errors = await this.postValidate(output);
+    if (errors.length > 0) {
+      throw new Error(`Post-validation failed:\n${errors.join('\n')}`);
+    }
+
+    // 8. Store in cache
+    if (!runOpts.skipCache && this.cache) {
+      this.cache.store('swagger-to-api', cacheKey, { serviceTs, testTs });
+    }
+
+    // 9. Write files (unless dry run)
+    if (!runOpts.dryRun) this.writeFiles(input, output);
+
+    return output;
   }
 
   /**
    * Generate Service + Test for ALL groups from a parsed swagger result.
-   * Runs sequentially to respect rate limits — ~8s per group.
+   * Runs sequentially — ~8s per group when LLM enricher is active.
    *
    * @returns Map of groupName → generated output
    */
@@ -220,11 +210,9 @@ export class SwaggerToApiAgent {
   ): Promise<Map<string, SwaggerToApiOutput>> {
     const { outputDir, testOutputDir, onGroupStart, onGroupDone, ...runOpts } = opts;
     const results = new Map<string, SwaggerToApiOutput>();
-
     for (let i = 0; i < parsed.groups.length; i++) {
       const group = parsed.groups[i];
       onGroupStart?.(group.groupName, i, parsed.groups.length);
-
       const output = await this.run(
         {
           group,
@@ -232,14 +220,67 @@ export class SwaggerToApiAgent {
           outputDir,
           testOutputDir,
           securitySchemes: parsed.securitySchemes,
+          globalSecurity: parsed.globalSecurity,
         },
         runOpts,
       );
-
       results.set(group.groupName, output);
       onGroupDone?.(group.groupName, output);
     }
-
     return results;
+  }
+
+  private async buildRenderablePlans(plans: TestCasePlan[]): Promise<RenderablePlan[]> {
+    // Group plans by endpoint so enricher gets all plans for the same endpoint together.
+    const grouped = new Map<string, { plans: TestCasePlan[]; indices: number[] }>();
+    for (let i = 0; i < plans.length; i++) {
+      const epId = plans[i].endpoint.operationId;
+      const entry = grouped.get(epId) ?? { plans: [], indices: [] };
+      entry.plans.push(plans[i]);
+      entry.indices.push(i);
+      grouped.set(epId, entry);
+    }
+
+    const dataCtx = new DataContext();
+    const renderablePlans: RenderablePlan[] = plans.map((plan) => ({ plan, title: '' }));
+
+    for (const { plans: epPlans, indices } of grouped.values()) {
+      const endpoint = epPlans[0].endpoint;
+
+      // Build payload for each plan in this endpoint group
+      for (let j = 0; j < epPlans.length; j++) {
+        const plan = epPlans[j];
+        const payload = await this.dataFactory.build(endpoint, {
+          seed: this.agentOpts.seed ?? strHash(plan.id),
+          ctx: dataCtx,
+          mutation: plan.mutation,
+          includeOptional: this.agentOpts.includeOptional,
+        });
+        renderablePlans[indices[j]].payload = payload;
+      }
+
+      // Enrich scenario titles
+      const enriched = this.agentOpts.noLlm
+        ? ScenarioEnricher.autoTitle(epPlans, endpoint)
+        : await this.enricher.enrich(epPlans, endpoint);
+
+      for (let j = 0; j < enriched.length; j++) {
+        renderablePlans[indices[j]].title = enriched[j]?.title ?? autoTitleFallback(epPlans[j]);
+      }
+    }
+
+    return renderablePlans;
+  }
+
+  private writeFiles(input: SwaggerToApiInput, output: SwaggerToApiOutput): void {
+    const outputDir = input.outputDir ?? path.join(process.cwd(), 'src', 'api');
+    const testOutputDir = input.testOutputDir ?? path.join(process.cwd(), 'tests', 'api', 'smoke');
+    const { groupName, tagSlug } = input.group;
+    const svcPath = path.join(outputDir, 'services', `${groupName}Service.ts`);
+    const testPath = path.join(testOutputDir, `${tagSlug}.test.ts`);
+    fs.mkdirSync(path.dirname(svcPath), { recursive: true });
+    fs.mkdirSync(path.dirname(testPath), { recursive: true });
+    fs.writeFileSync(svcPath, output.serviceTs, 'utf8');
+    fs.writeFileSync(testPath, output.testTs, 'utf8');
   }
 }

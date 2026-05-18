@@ -6,12 +6,12 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import ora from 'ora';
 
-import '../src/core/config/ConfigLoader';
 import { CurlToApiAgent } from '../src/ai/codegen/CurlToApiAgent';
 import { HtmlToFragmentAgent } from '../src/ai/codegen/HtmlToFragmentAgent';
 import { ScenarioGeneratorAgent } from '../src/ai/codegen/ScenarioGeneratorAgent';
 import { SwaggerToApiAgent } from '../src/ai/codegen/SwaggerToApiAgent';
 import { SwaggerParser } from '../src/api/swagger/SwaggerParser';
+import { config } from '../src/core/config/ConfigLoader';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -364,7 +364,7 @@ program
     );
 
     // ── Step 3: Generate per group ──────────────────────────────────────────
-    const agent = new SwaggerToApiAgent();
+    const agent = new SwaggerToApiAgent({ apiHeaderNames: config.apiHeaderNames });
     const outputDir = opts['output'] as string;
     const testOutputDir = opts['testOutput'] as string;
     const dryRun = !!opts['preview'];
