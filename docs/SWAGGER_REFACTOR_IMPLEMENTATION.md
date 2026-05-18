@@ -1,6 +1,6 @@
-# Implementation Plan — Swagger & cURL → API Test Generator Refactor
+﻿# Implementation Plan — Swagger & cURL → API Test Generator Refactor
 
-> **Status**: Ready to implement
+> **Status**: PR-1 ✓ | PR-2 ✓ | PR-3 ✓ | PR-3.5 ✓ | PR-4 ✓ — PR-5 through PR-8 pending
 > **Branch**: `Refactor-Swagger-AI-Agent`
 > **Goal**: Sinh ra một bộ API test script comprehensive từ Swagger/cURL. Bộ test khi chạy daily chính là **system health check**.
 
@@ -67,8 +67,8 @@ Tương tự cho language/timezone (skip step 1 nếu không có Swagger source)
 
 ### Tasks
 
-- [ ] **1.1** Install deps: `npm install --save ajv@^8 ajv-formats@^3`
-- [ ] **1.2** Thêm vào `ConfigSchema` ([ConfigLoader.ts](../src/core/config/ConfigLoader.ts)):
+- [x] **1.1** Install deps: `npm install --save ajv@^8 ajv-formats@^3`
+- [x] **1.2** Thêm vào `ConfigSchema` ([ConfigLoader.ts](../src/core/config/ConfigLoader.ts)):
   ```ts
   apiHeaderNames: z.object({
     token: z.string().default('Token'),           // ecosystem default
@@ -78,14 +78,14 @@ Tương tự cho language/timezone (skip step 1 nếu không có Swagger source)
   }).default({})
   ```
   Env override: `API_HEADER_TOKEN`, `API_HEADER_TOKEN_PREFIX`, `API_HEADER_LANGUAGE`, `API_HEADER_TIMEZONE`. Khi gặp API standard (`Authorization: Bearer xxx`), set `API_HEADER_TOKEN=Authorization` + `API_HEADER_TOKEN_PREFIX="Bearer "`.
-- [ ] **1.3** Sửa `buildAmbientHeaders(c, overrides?)` trong `ambientHeaders.ts`: tham số 2 override từng key. Emit `{[resolvedTokenName]: prefix + c.apiToken}` etc. **⚠️ HARD PRE-REQUISITE**: Phải mở rộng `AMBIENT_*_ALIASES` TRƯỚC khi đổi default sang `Lng`/`Tz` (không phải nice-to-have). Lý do: alias array hiện tại THIẾU `'lng'` và `'language'` ([ambientHeaders.ts:31-37](../src/api/rest/ambientHeaders.ts#L31)) → nếu đổi default trước, `ambientKind('Lng')` trả `null` → classifier xếp `Lng` thành required-header thường → service emit `.header('Lng', ...)` (sai mục đích). Final aliases sau update:
+- [x] **1.3** Sửa `buildAmbientHeaders(c, overrides?)` trong `ambientHeaders.ts`: tham số 2 override từng key. Emit `{[resolvedTokenName]: prefix + c.apiToken}` etc. **⚠️ HARD PRE-REQUISITE**: Phải mở rộng `AMBIENT_*_ALIASES` TRƯỚC khi đổi default sang `Lng`/`Tz` (không phải nice-to-have). Lý do: alias array hiện tại THIẾU `'lng'` và `'language'` ([ambientHeaders.ts:31-37](../src/api/rest/ambientHeaders.ts#L31)) → nếu đổi default trước, `ambientKind('Lng')` trả `null` → classifier xếp `Lng` thành required-header thường → service emit `.header('Lng', ...)` (sai mục đích). Final aliases sau update:
   ```ts
   AMBIENT_TOKEN_ALIASES:    ['token','authorization','x-auth-token','auth-token','x-token','x-api-key','api-key']
   AMBIENT_LANGUAGE_ALIASES: ['lng','lang','language','accept-language','x-language','x-lang','ln']    // +lng, +language
   AMBIENT_TIMEZONE_ALIASES: ['tz','timezone','time-zone','x-timezone','x-tz']
   ```
-- [ ] **1.4** Export const `AMBIENT_DEFAULTS = { token: 'Token', tokenPrefix: '', language: 'Lng', timezone: 'Tz' }` từ `ambientHeaders.ts`. Default cho codegen khi spec không cung cấp; runtime đọc từ `config.apiHeaderNames`.
-- [ ] **1.5** Mở rộng `RestClientInitOpts` trong `RestClient.ts`:
+- [x] **1.4** Export const `AMBIENT_DEFAULTS = { token: 'Token', tokenPrefix: '', language: 'Lng', timezone: 'Tz' }` từ `ambientHeaders.ts`. Default cho codegen khi spec không cung cấp; runtime đọc từ `config.apiHeaderNames`.
+- [x] **1.5** Mở rộng `RestClientInitOpts` trong `RestClient.ts`:
   ```ts
   interface RestClientInitOpts {
     baseURL?: string;
@@ -97,24 +97,24 @@ Tương tự cho language/timezone (skip step 1 nếu không có Swagger source)
   ```
   `init()`: pass `headerOverrides` cho `buildAmbientHeaders`; sau đó delete keys theo `skipAmbient` resolve từ overrides (KHÔNG hardcode tên).
   > **Note**: `RestRequestConfig.failOnStatusCode` đã có sẵn trong [src/api/rest/types.ts:6](../src/api/rest/types.ts#L6) ở **request-level**. PR-1.5 thêm option mới ở **context-level** cho Playwright `newContext()` — khác concept (context-level apply cho toàn bộ requests trong client), không conflict.
-- [ ] **1.6** Trong `RestClient.init()`, truyền explicit `failOnStatusCode: false` vào `request.newContext()` (để 4xx trả về RestResponse, không throw)
-- [ ] **1.7** Tạo file mới `src/api/rest/SchemaValidator.ts` export class singleton `SchemaValidator` với method `validate(schema: object, data: unknown): { valid: boolean; errors: string[] }`. Internal: lazy init `new Ajv({ strict: false, allErrors: true })` + `addFormats(ajv)`. Cache compiled validator theo schema reference (WeakMap nếu được, else Map)
-- [ ] **1.8** Thêm method `expectSchema(schema: object): this` vào `RestResponse.ts` — gọi `SchemaValidator.validate(schema, this.body)`, throw `Error` với errors join nếu invalid
-- [ ] **1.9** Thêm method `expectContentType(expected: string): this` vào `RestResponse.ts` — check `this.headers['content-type']` startsWith `expected` (cho phép suffix `; charset=utf-8`)
-- [ ] **1.10** Grep và sửa mọi reference 3 header cũ trong service files hand-written. **Đã verify (lean-ctx) — 3 file cần sửa**:
+- [x] **1.6** Trong `RestClient.init()`, truyền explicit `failOnStatusCode: false` vào `request.newContext()` (để 4xx trả về RestResponse, không throw)
+- [x] **1.7** Tạo file mới `src/api/rest/SchemaValidator.ts` export class singleton `SchemaValidator` với method `validate(schema: object, data: unknown): { valid: boolean; errors: string[] }`. Internal: lazy init `new Ajv({ strict: false, allErrors: true })` + `addFormats(ajv)`. Cache compiled validator theo schema reference (WeakMap nếu được, else Map)
+- [x] **1.8** Thêm method `expectSchema(schema: object): this` vào `RestResponse.ts` — gọi `SchemaValidator.validate(schema, this.body)`, throw `Error` với errors join nếu invalid
+- [x] **1.9** Thêm method `expectContentType(expected: string): this` vào `RestResponse.ts` — check `this.headers['content-type']` startsWith `expected` (cho phép suffix `; charset=utf-8`)
+- [x] **1.10** Grep và sửa mọi reference 3 header cũ trong service files hand-written. **Đã verify (lean-ctx) — 3 file cần sửa**:
   - [src/api/services/FindService.ts:20](../src/api/services/FindService.ts#L20) — `.header('Accept-Language', ...)`
   - [src/api/services/SamsoniteService.ts:22](../src/api/services/SamsoniteService.ts#L22) — `.header('Accept-Language', ...)`
   - [src/api/services/Samsonite2Service.ts:26](../src/api/services/Samsonite2Service.ts#L26) — `.header('Accept-Language', ...)`
   - Xóa các `.header()` call này (ambient sẽ inject runtime qua RestClient). Nếu giá trị cần khác config global (per-test override), dùng `client.init({ headerOverrides: { language: 'xx-XX' } })` trong test thay vì hardcode trong service
   - Grep thêm patterns `'Authorization'`/`'Bearer '`/`'X-Timezone'` để cover edge case
-- [ ] **1.10b** **NEW**: Update existing unit tests sẽ FAIL sau đổi default (verified bằng code-review-graph):
+- [x] **1.10b** **NEW**: Update existing unit tests sẽ FAIL sau đổi default (verified bằng code-review-graph):
   - [tests/unit/api/rest/ambientHeaders.test.ts](../tests/unit/api/rest/ambientHeaders.test.ts) — test `"emits Authorization Bearer when apiToken is set"` (L14) sẽ fail vì default mới là `Token` raw
   - [tests/unit/api/rest/RestClient.test.ts](../tests/unit/api/rest/RestClient.test.ts) — `describe:RestClient.init — ambient headers` (L40-97) cần update assertions
   - Replace bằng 3 case mới ở task 1.14 (default ecosystem / env Bearer override / per-endpoint X-API-Key)
-- [ ] **1.11** Update [tests/api/regression/user-crud.test.ts](../tests/api/regression/user-crud.test.ts) và [tests/api/smoke/health.test.ts](../tests/api/smoke/health.test.ts) nếu chúng reference header cũ
-- [ ] **1.12** Thêm unit test `tests/unit/api/rest/SchemaValidator.test.ts`: positive + negative cho format `email`/`date-time`/`uuid`/`pattern`/`enum`/`nullable: true`
-- [ ] **1.13** Thêm unit test `tests/unit/api/rest/RestResponse.expectSchema.test.ts`: mock body match/mismatch schema
-- [ ] **1.14** Thêm unit test `tests/unit/api/rest/ambientHeaders.test.ts` cover 3 case:
+- [x] **1.11** Update [tests/api/regression/user-crud.test.ts](../tests/api/regression/user-crud.test.ts) và [tests/api/smoke/health.test.ts](../tests/api/smoke/health.test.ts) nếu chúng reference header cũ
+- [x] **1.12** Thêm unit test `tests/unit/api/rest/SchemaValidator.test.ts`: positive + negative cho format `email`/`date-time`/`uuid`/`pattern`/`enum`/`nullable: true`
+- [x] **1.13** Thêm unit test `tests/unit/api/rest/RestResponse.expectSchema.test.ts`: mock body match/mismatch schema
+- [x] **1.14** Thêm unit test `tests/unit/api/rest/ambientHeaders.test.ts` cover 3 case:
   ```ts
   // Case A — default ecosystem
   buildAmbientHeaders({ apiToken:'x', apiLanguage:'vi', apiTimezone:'Asia/HCM' })
@@ -160,17 +160,17 @@ npm test -- --testPathPattern="api/rest"
 
 ### Tasks
 
-- [ ] **2.1** Tạo fixture `tests/api/_fixtures/system-health.yaml`: 6 endpoints (GET /ping no-auth, GET /users with `Token` security, GET /users/{id} với path param, POST /users body required name+email pattern+`Lng` required header, PUT /users/{id}, DELETE /users/{id}) — bao gồm securityScheme apiKey name=`Token` in=header, một endpoint có `security: []` override
-- [ ] **2.2** Mở rộng interface `SwaggerParameter` trong `SwaggerParser.ts`: thêm `enum?`, `format?`, `pattern?`, `minimum?`, `maximum?`, `minLength?`, `maxLength?`, `example?`, `default?`. Cập nhật `normalizeParameters` để map các field từ raw schema
-- [ ] **2.3** Mở rộng `SwaggerRequestBody`: đổi `schema: Record<string, unknown>` thành `contents: Record<string, { schema, example? }>` (giữ tất cả content types); giữ field `contentType` và `schema` cho back-compat shorthand (= `Object.values(contents)[0]`)
-- [ ] **2.4** Trong `SwaggerParser.parse()`, gọi `SwaggerParserLib.validate(input)` trước `dereference()`. Catch error, wrap thành Error với message thân thiện. Truyền option `dereference: { circular: 'ignore' }` cho dereference call
-- [ ] **2.5** Sau dereference, check `parser.$refs.circular` (lưu ý: `SwaggerParserLib.dereference` trả về raw `api` object — cần dùng `new SwaggerParserLib()` instance để access `$refs`). Log warning console nếu `true`
-- [ ] **2.6** Tạo file mới `src/api/swagger/SwaggerSchemaExtractor.ts`:
+- [x] **2.1** Tạo fixture `tests/api/_fixtures/system-health.yaml`: 6 endpoints (GET /ping no-auth, GET /users with `Token` security, GET /users/{id} với path param, POST /users body required name+email pattern+`Lng` required header, PUT /users/{id}, DELETE /users/{id}) — bao gồm securityScheme apiKey name=`Token` in=header, một endpoint có `security: []` override
+- [x] **2.2** Mở rộng interface `SwaggerParameter` trong `SwaggerParser.ts`: thêm `enum?`, `format?`, `pattern?`, `minimum?`, `maximum?`, `minLength?`, `maxLength?`, `example?`, `default?`. Cập nhật `normalizeParameters` để map các field từ raw schema
+- [x] **2.3** Mở rộng `SwaggerRequestBody`: đổi `schema: Record<string, unknown>` thành `contents: Record<string, { schema, example? }>` (giữ tất cả content types); giữ field `contentType` và `schema` cho back-compat shorthand (= `Object.values(contents)[0]`)
+- [x] **2.4** Trong `SwaggerParser.parse()`, gọi `SwaggerParserLib.validate(input)` trước `dereference()`. Catch error, wrap thành Error với message thân thiện. Truyền option `dereference: { circular: 'ignore' }` cho dereference call
+- [x] **2.5** Sau dereference, check `parser.$refs.circular` (lưu ý: `SwaggerParserLib.dereference` trả về raw `api` object — cần dùng `new SwaggerParserLib()` instance để access `$refs`). Log warning console nếu `true`
+- [x] **2.6** Tạo file mới `src/api/swagger/SwaggerSchemaExtractor.ts`:
   - Export type `FieldConstraint { path, type, required, format?, min?, max?, minLength?, maxLength?, pattern?, enum?, example?, default? }`
   - `extractConstraints(schema, basePath = ''): FieldConstraint[]` — recurse object/array, flatten nested `required[]` thành dot-paths
   - `flattenRequiredPaths(schema): string[]` — chỉ require paths
   - Self-ref guard: nếu thấy `__circular__` marker (do swagger-parser ignore option), emit `FieldConstraint { type: 'object', required: false }` placeholder và stop recurse
-- [ ] **2.7** Tạo file mới `src/api/swagger/SwaggerSecurity.ts`:
+- [x] **2.7** Tạo file mới `src/api/swagger/SwaggerSecurity.ts`:
   - Export type `ResolvedAuth { required: boolean; headerName: string; prefix: string; scheme: 'apiKey'|'http-bearer'|'http-basic'|'oauth2'|'openIdConnect'|'none' }`
   - `resolveEndpointAuth(opSecurity, globalSecurity, schemes, fallback): ResolvedAuth` — logic:
     - `opSecurity === []` ⇒ `required:false`, scheme:`none`
@@ -180,11 +180,11 @@ npm test -- --testPathPattern="api/rest"
       - `http` + `scheme:basic` → `headerName: 'Authorization'`, `prefix: 'Basic '`
       - `oauth2`/`openIdConnect` → `required:true` (downstream skip negative-auth)
     - Không match scheme nào ⇒ dùng `fallback = config.apiHeaderNames` (mặc định `Token`/`''`). Adapter (PR-3.2) truyền `fallback` từ `config.apiHeaderNames`.
-- [ ] **2.8** Unit test `tests/unit/api/swagger/SwaggerSchemaExtractor.test.ts`: 1 case mỗi loại constraint (required, pattern, enum, min, max, minLength, maxLength, format, nullable, nested object, array items)
-- [ ] **2.9** Unit test `tests/unit/api/swagger/SwaggerSecurity.test.ts`: 6 case (bearer, basic, apiKey header, apiKey cookie → required:false vì không phải header, op `[]` override, oauth2)
-- [ ] **2.10** Unit test `tests/unit/api/swagger/SwaggerParser.test.ts`: parse `system-health.yaml` fixture, snapshot kết quả
-- [ ] **2.11** Mở rộng `SwaggerSchemaExtractor.extractConstraints` — collect `properties[field].example`, `properties[field].default`, `properties[field].examples[0]` (OAS3) vào `FieldConstraint.example`/`default`
-- [ ] **2.12** Mở rộng `SwaggerParser.normalizeRequestBody` extract cả media-type `examples` (object, OAS3) → emit array `BodyModel.examples[]` (PR-3 sẽ map vào EndpointModel)
+- [x] **2.8** Unit test `tests/unit/api/swagger/SwaggerSchemaExtractor.test.ts`: 1 case mỗi loại constraint (required, pattern, enum, min, max, minLength, maxLength, format, nullable, nested object, array items)
+- [x] **2.9** Unit test `tests/unit/api/swagger/SwaggerSecurity.test.ts`: 6 case (bearer, basic, apiKey header, apiKey cookie → required:false vì không phải header, op `[]` override, oauth2)
+- [x] **2.10** Unit test `tests/unit/api/swagger/SwaggerParser.test.ts`: parse `system-health.yaml` fixture, snapshot kết quả
+- [x] **2.11** Mở rộng `SwaggerSchemaExtractor.extractConstraints` — collect `properties[field].example`, `properties[field].default`, `properties[field].examples[0]` (OAS3) vào `FieldConstraint.example`/`default`
+- [x] **2.12** Mở rộng `SwaggerParser.normalizeRequestBody` extract cả media-type `examples` (object, OAS3) → emit array `BodyModel.examples[]` (PR-3 sẽ map vào EndpointModel)
 
 ### Verify
 ```bash
@@ -212,7 +212,7 @@ npm test -- --testPathPattern="api/swagger"
 
 ### Tasks
 
-- [ ] **3.1** Tạo file `src/ai/codegen/shared/EndpointModel.ts`:
+- [x] **3.1** Tạo file `src/ai/codegen/shared/EndpointModel.ts`:
   ```ts
   export interface ParamModel { name: string; in: 'path'|'query'|'header'|'cookie'; required: boolean; constraints: FieldConstraint[]; description?: string }
   export interface BodyModel { contentType: string; schema?: Record<string, unknown>; example?: unknown; examples?: unknown[]; required: boolean; requiredPaths: string[] }
@@ -242,10 +242,10 @@ npm test -- --testPathPattern="api/swagger"
     tags: string[];
   }
   ```
-- [ ] **3.2** Tạo file `src/api/swagger/SwaggerEndpointAdapter.ts`:
+- [x] **3.2** Tạo file `src/api/swagger/SwaggerEndpointAdapter.ts`:
   - Export `swaggerToModel(group, allSchemes, globalSecurity, config): EndpointModel[]`
   - Cho mỗi `SwaggerEndpoint`: call `headerClassifier.classify({}, { swaggerHeaders, securityHeaderNames })` cho header tier; call `SwaggerSchemaExtractor.extractConstraints` cho body + params; call `SwaggerSecurity.resolveEndpointAuth(opSec, globalSec, schemes, fallback = config.apiHeaderNames)` cho auth; map `fieldExamples` (PR-2.11) + `bodyExamples` (PR-2.12); đọc `endpoint['x-depends-on']` (array operationId) vào `xDependsOn`; map sang `EndpointModel`
-- [ ] **3.3** Tạo file `src/api/curl/CurlEndpointAdapter.ts`:
+- [x] **3.3** Tạo file `src/api/curl/CurlEndpointAdapter.ts`:
   - Export `curlToModel(req: RestRequest, opts: { serviceName, pathTemplate?, withResponse?, expectedStatus? }): EndpointModel`
   - Path tokenize: parse URL pathname; với mỗi segment numeric (`^\d+$`) hoặc UUID-shaped (`^[0-9a-f-]{36}$`) ⇒ thay bằng `{id}` (hoặc tên từ `--path-template` nếu cung cấp). Đưa vào `pathParams`
   - Query parse: `URL.searchParams` ⇒ `queryParams[]`, mọi key `required: false`
@@ -254,14 +254,14 @@ npm test -- --testPathPattern="api/swagger"
   - Body inference: nếu body là JSON object/array ⇒ helper `inferLooseSchema(json)` recurse trả về `{ type, properties?, items? }`; `requiredPaths` = top-level keys có giá trị non-null
   - Response: nếu `withResponse` truyền ⇒ `inferLooseSchema` cho response, build `ResponseModel { statusCode: expectedStatus ?? default, schema }`. Else: empty array
   - `constraints: []` (cURL không có constraint signal)
-- [ ] **3.4** Thêm helper `inferLooseSchema(value: unknown): Record<string, unknown>` trong `CurlEndpointAdapter.ts` (hoặc shared utility): không bịa format/pattern/enum, chỉ infer type theo `typeof`/`Array.isArray`
-- [ ] **3.5** Tạo 4 fixture cURL trong `tests/api/_fixtures/sample-curls/`:
+- [x] **3.4** Thêm helper `inferLooseSchema(value: unknown): Record<string, unknown>` trong `CurlEndpointAdapter.ts` (hoặc shared utility): không bịa format/pattern/enum, chỉ infer type theo `typeof`/`Array.isArray`
+- [x] **3.5** Tạo 4 fixture cURL trong `tests/api/_fixtures/sample-curls/`:
   - `get-no-auth.txt` (GET /ping)
   - `get-with-token.txt` (GET /users với header Token + Lng + Tz)
   - `post-with-body.txt` (POST /users body `{name, email}`)
   - `post-with-response.json` (response body cho test `--with-response` flag)
-- [ ] **3.6** Unit test `tests/unit/ai/codegen/shared/SwaggerEndpointAdapter.test.ts`: parse `system-health.yaml` → snapshot `EndpointModel[]`
-- [ ] **3.7** Unit test `tests/unit/ai/codegen/shared/CurlEndpointAdapter.test.ts`: parse 4 fixture cURL → snapshot `EndpointModel`, assert auth detection + path tokenization + body shape
+- [x] **3.6** Unit test `tests/unit/ai/codegen/shared/SwaggerEndpointAdapter.test.ts`: parse `system-health.yaml` → snapshot `EndpointModel[]`
+- [x] **3.7** Unit test `tests/unit/ai/codegen/shared/CurlEndpointAdapter.test.ts`: parse 4 fixture cURL → snapshot `EndpointModel`, assert auth detection + path tokenization + body shape
 
 ### Verify
 ```bash
@@ -291,9 +291,9 @@ npm test -- --testPathPattern="shared|api/curl"
 
 ### Tasks
 
-- [ ] **3.5.1** Install: `npm i json-schema-faker zod-to-json-schema randexp`. Verify compat với `@faker-js/faker@^8` — nếu jsf version mới nhất không support faker 8, lock jsf phiên bản tương thích hoặc viết adapter (smoke test: `jsf.generate({faker:'person.fullName'}, {extensions:{faker}})` phải trả về string).
+- [x] **3.5.1** Install: `npm i json-schema-faker zod-to-json-schema randexp`. Verify compat với `@faker-js/faker@^8` — nếu jsf version mới nhất không support faker 8, lock jsf phiên bản tương thích hoặc viết adapter (smoke test: `jsf.generate({faker:'person.fullName'}, {extensions:{faker}})` phải trả về string).
 
-- [ ] **3.5.2** Tạo `src/ai/data/DataContext.ts` (~ 60 LOC):
+- [x] **3.5.2** Tạo `src/ai/data/DataContext.ts` (~ 60 LOC):
   ```ts
   export class DataContext {
     private store = new Map<string, unknown>();
@@ -305,7 +305,7 @@ npm test -- --testPathPattern="shared|api/curl"
   }
   ```
 
-- [ ] **3.5.3** Tạo `src/ai/data/DataFactory.ts` (~ 100 LOC) — wrapper quanh `json-schema-faker`:
+- [x] **3.5.3** Tạo `src/ai/data/DataFactory.ts` (~ 100 LOC) — wrapper quanh `json-schema-faker`:
   ```ts
   import { faker } from '@faker-js/faker';
   export interface BuildOpts {
@@ -339,11 +339,11 @@ npm test -- --testPathPattern="shared|api/curl"
   ```
   `applyMutation` (~ 30 LOC): xử lý `missing-required` (delete field theo path), `invalid-pattern` (replace `"###"`), `invalid-enum` (replace `"__INVALID__"`), `out-of-range` (replace `Number.MAX_SAFE_INTEGER`), `type-mismatch` (swap type), `over-length` (string `'x'.repeat(constraint.maxLength+1)`).
 
-- [ ] **3.5.4** Rewrite `src/ai/data/SchemaDrivenFaker.ts` thành wrapper:
+- [x] **3.5.4** Rewrite `src/ai/data/SchemaDrivenFaker.ts` thành wrapper:
   - `fakeFromSchema(zodSchema, opts?)` convert Zod → JSON Schema (`zod-to-json-schema`) → delegate `DataFactory.build`
   - Giữ chữ ký cũ — không break call site hiện hữu (`UserFactory`, `UserApiFactory`)
 
-- [ ] **3.5.5** Unit tests:
+- [x] **3.5.5** Unit tests:
   - `tests/unit/ai/data/DataFactory.test.ts`: 6 case (basic object, enum pick deterministic, pattern match, example precedence over faker, mutation apply theo path, seed determinism deep-equal 2 runs)
   - `tests/unit/ai/data/DataContext.test.ts`: capture + resolve nested template (`'${user.profile.email}'`) + clear
   - `tests/unit/ai/data/SchemaDrivenFaker.test.ts`: regression — Zod path vẫn pass cho existing factories
@@ -375,7 +375,7 @@ npm test -- --testPathPattern="ai/data"
 
 ### Tasks
 
-- [ ] **4.1** Tạo file `src/ai/codegen/shared/TestCasePlan.ts`:
+- [x] **4.1** Tạo file `src/ai/codegen/shared/TestCasePlan.ts`:
   ```ts
   export type TestKind = 'positive' | 'negative-validation' | 'negative-auth-missing' | 'negative-auth-invalid' | 'negative-headers';
   export interface TestCasePlan {
@@ -393,7 +393,7 @@ npm test -- --testPathPattern="ai/data"
     };
   }
   ```
-- [ ] **4.2** Tạo `src/ai/codegen/shared/TestCasePlanner.ts`:
+- [x] **4.2** Tạo `src/ai/codegen/shared/TestCasePlanner.ts`:
   - Interface `PlannerStrategy { planNegative(ep: EndpointModel): TestCasePlan[] }`
   - Class `TestCasePlanner` constructor `(strategy, opts: { requiredHeaders?: string[]; authNegativeCases?: 'missing'|'invalid'|'both' })`
   - Method `plan(ep: EndpointModel): TestCasePlan[]`:
@@ -402,16 +402,16 @@ npm test -- --testPathPattern="ai/data"
     - Nếu `ep.auth.required && scheme === 'apiKey'`: emit `@negative-auth-missing` và/hoặc `@negative-auth-invalid` theo opts
     - Nếu `ep.headerParams.required` chứa `Lng`/`Tz` (hoặc trong `opts.requiredHeaders`): emit `@negative-headers` (skipAmbient language hoặc timezone)
     - Apply skip rules (xem 4.5)
-- [ ] **4.3** Tạo `src/ai/codegen/shared/strategies/SwaggerNegativeStrategy.ts`:
+- [x] **4.3** Tạo `src/ai/codegen/shared/strategies/SwaggerNegativeStrategy.ts`:
   - `planNegative(ep)`: pick 1 constraint cao nhất theo priority `required > pattern > enum > min/max > minLength/maxLength`. Build `TestCasePlan { kind:'negative-validation', mutation: { path, kind: 'missing-required'|... } }`. KHÔNG fallback type-mismatch
   - DELETE method: emit `negative-validation` với `mutation.kind: 'missing-required'` cho path param (id không tồn tại), expect 404
   - Nếu không có constraint nào ⇒ trả `[]`
-- [ ] **4.4** Tạo `src/ai/codegen/shared/strategies/CurlNegativeStrategy.ts`:
+- [x] **4.4** Tạo `src/ai/codegen/shared/strategies/CurlNegativeStrategy.ts`:
   - `planNegative(ep)`: với mutating method (POST/PUT/PATCH) + body JSON object:
     - 1 plan `missing-required` cho top-level key đầu (lấy từ `requiredPaths[0]`)
     - Heuristic format: scan body keys, key match `/email|mail/i` ⇒ thêm plan `invalid-pattern` với value `"not-an-email"`; `/url|uri/i` ⇒ `"not a url"`; `/phone|mobile/i` ⇒ `"abc"`. Mỗi heuristic max 1 plan
   - Plan cap: max 2 `negative-validation` per endpoint
-- [ ] **4.5** Implement skip rules trong `TestCasePlanner.plan()`:
+- [x] **4.5** Implement skip rules trong `TestCasePlanner.plan()`:
   - Endpoint có `x-internal: true` hoặc `x-no-test: true` ⇒ return `[]` (TestCasePlanner check `ep` extension fields — adapter cần forward)
   - Method `OPTIONS` ⇒ return `[]`
   - Response 2xx không có schema ⇒ skip `@schema` (đã handle trong 4.2)
@@ -419,11 +419,11 @@ npm test -- --testPathPattern="ai/data"
   - Body content-type không phải `application/json` ⇒ skip `negative-validation`; mark positive plan với note `requiresBodyBuilder: true`
   - Auth scheme `oauth2`/`openIdConnect` ⇒ skip `negative-auth-*`
   - Deprecated endpoint ⇒ strip `@smoke` khỏi positive tags, thêm `@deprecated`
-- [ ] **4.6** Mỗi plan có `id` deterministic: `sha256(${endpoint.operationId}:${kind}:${mutation?.path}:${mutation?.kind})`
-- [ ] **4.7** Unit test `tests/unit/ai/codegen/shared/TestCasePlanner.test.ts`: snapshot `TestCasePlan[]` cho mỗi method (GET/POST/PUT/DELETE) từ fixture `system-health.yaml`
-- [ ] **4.8** Unit test cho cả 2 strategy: assert constraint priority, heuristic detection, plan count limits
-- [ ] **4.9** `TestCasePlan` thêm field `dependencies?: string[]` (copy từ `endpoint.xDependsOn`). Mỗi entry = operationId của plan phụ thuộc (resource phải tồn tại trước)
-- [ ] **4.10** `TestCasePlanner.plan(endpoints)` sort topological theo `dependencies` → trả `{ plans: TestCasePlan[], executionOrder: string[] }`. Throw rõ ràng nếu circular (`Cycle detected: A → B → A`). **KHÔNG** heuristic auto-detect (defer phase sau) — chỉ trust `x-depends-on` explicit từ spec
+- [x] **4.6** Mỗi plan có `id` deterministic: `sha256(${endpoint.operationId}:${kind}:${mutation?.path}:${mutation?.kind})`
+- [x] **4.7** Unit test `tests/unit/ai/codegen/shared/TestCasePlanner.test.ts`: snapshot `TestCasePlan[]` cho mỗi method (GET/POST/PUT/DELETE) từ fixture `system-health.yaml`
+- [x] **4.8** Unit test cho cả 2 strategy: assert constraint priority, heuristic detection, plan count limits
+- [x] **4.9** `TestCasePlan` thêm field `dependencies?: string[]` (copy từ `endpoint.xDependsOn`). Mỗi entry = operationId của plan phụ thuộc (resource phải tồn tại trước)
+- [x] **4.10** `TestCasePlanner.plan(endpoints)` sort topological theo `dependencies` → trả `{ plans: TestCasePlan[], executionOrder: string[] }`. Throw rõ ràng nếu circular (`Cycle detected: A → B → A`). **KHÔNG** heuristic auto-detect (defer phase sau) — chỉ trust `x-depends-on` explicit từ spec
 
 ### Verify
 ```bash
@@ -744,4 +744,41 @@ npx codeceptjs run --grep @smoke
 - **CLI flag `--chain <opA>:<opB>`** thay thế x-depends-on khi spec read-only: defer
 
 **Implementation log**:
-- _(empty)_
+
+**PR-1 (commit `2d602df`):**
+- `ambientHeaders.ts`: `AMBIENT_LANGUAGE_ALIASES` bổ sung `'lng'` — fix classify bỏ sót header `Lng` của fixture
+- `RestClient.ts`: thêm `RestClientInitOpts` (`skipAmbient`, `headerOverrides`, `failOnStatusCode`); inject via `buildAmbientHeaders()`; `failOnStatusCode: false` trong `request.newContext()`
+- `RestResponse.ts`: `expectSchema(schema)` (AJV delegate), `expectContentType(expected)` (`startsWith`)
+- `SchemaValidator.ts`: AJV 8 singleton `strict:false allErrors:true` + ajv-formats; WeakMap compiled-validator cache
+- 3 services (`FindService`, `SamsoniteService`, `Samsonite2Service`): xóa `.header('Accept-Language', ...)` thủ công → dùng ambient injection
+
+**PR-2 (commit `0506691`):**
+- `SwaggerParser`: expose `globalSecurity`, `securitySchemes` từ parsed spec
+- `SwaggerParser.extractSecurityHeaderNames()`: tập hợp tên header từ `apiKey` schemes → feed vào `classify()` để phân loại ambient
+- `SwaggerEndpoint.requestBody.examples`: populated từ `requestBody.content.*.examples` (task 2.12)
+
+**PR-3.5 (data generation layer):**
+- `json-schema-faker` downgraded to 0.5.6 (0.6.x là ESM-only, incompatible với `module:commonjs`). Locked với `^0.5.6` behaviour.
+- `DataContext.ts`: single `${key}` expression trả về raw value (preserve type); multi-placeholder interpolate sang string
+- `DataFactory.ts`: seed determinism qua `faker.seed(n)` + `jsf.option({ random: seededRng(n) })` (LCG). `buildFromSchema` là core; `build(endpoint)` delegate với hash(operationId) làm default seed. `applyMutation` xử lý 6 mutation kinds (auth mutations là no-op tại layer này).
+- `SchemaDrivenFaker.ts`: rewrite thành thin wrapper `fakeFromSchema` — Zod → zodToJsonSchema (cast `as any` để tránh TS2589 deep instantiation) → jsf.generate → schema.parse. Old `inferFakerForKey`/`unwrap` helpers đã xóa.
+- **500/500 unit tests pass**, `tsc --noEmit` clean.
+
+**PR-3 (merge commit `da74ccc`):**
+- `src/ai/codegen/shared/EndpointModel.ts` — shared internal type: `HttpMethod`, `ParamModel`, `BodyModel`, `ResponseModel`, `EndpointModel`
+- `src/api/swagger/SwaggerEndpointAdapter.ts` — `swaggerToModel()`: convert `SwaggerGroup` → `EndpointModel[]`
+- `src/api/curl/CurlEndpointAdapter.ts` — `curlToModel()` + `inferLooseSchema()`: convert `RestRequest` → `EndpointModel` với path tokenization (numeric/UUID → `{id}`)
+- **Bug fixed**: `headerParams.ambient.token` phải dùng `auth.required` thay vì `!!classification.ambient.token`. `classify()` luôn mark token-ambient dựa trên `securityHeaderNames` (global schemes), không phân biệt `security: []` override per-endpoint. `resolveEndpointAuth()` mới là source of truth.
+- Fixtures cURL: `get-no-auth.txt`, `get-with-token.txt`, `post-with-body.txt`, `post-with-response.json`
+- Unit tests: `SwaggerEndpointAdapter.test.ts` (17 cases), `CurlEndpointAdapter.test.ts` (22 cases)
+- **471/471 tests pass**, `tsc --noEmit` clean
+
+**PR-4 (TestCasePlanner + strategies):**
+- `TestCasePlan.ts`: types `TestKind`, `MutationKind`, `TestCasePlan` (kèm `dependencies?`); `makePlanId()` dùng `sha256(operationId:kind:mutationPath:mutationKind)`.
+- `TestCasePlanner.ts`: interface `PlannerStrategy`; class `TestCasePlanner` với `plan(ep)` (single endpoint) + `planAll(endpoints)` (topological sort). Skip rules: x-internal/x-no-test, OPTIONS, oauth2/openIdConnect auth, deprecated → no @smoke. Kahn's algorithm cho topo-sort; throw `Cycle detected: A → B → A` khi circular.
+- `SwaggerNegativeStrategy.ts`: constraint priority `required > pattern > enum > min/max > minLength/maxLength` → pick 1 plan per endpoint. DELETE + path params → expect 404. Non-JSON body → skip.
+- `CurlNegativeStrategy.ts`: POST/PUT/PATCH only; 1 `missing-required` plan + heuristic email/url/phone → `invalid-pattern`; cap 2 plans.
+- **Bug note**: `ep.constraints` từ `SwaggerEndpointAdapter` bao gồm cả path/query param constraints (không chỉ body). GET /users/{id} có `id` path param required → strategy đúng khi sinh 1 negative-validation plan cho nó.
+- Unit tests: `TestCasePlanner.test.ts` (34 cases), `SwaggerNegativeStrategy.test.ts` (13 cases), `CurlNegativeStrategy.test.ts` (15 cases).
+- **556/556 tests pass**, `tsc --noEmit` clean.
+
