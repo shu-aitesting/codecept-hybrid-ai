@@ -61,6 +61,9 @@ const USER_GROUP: SwaggerGroup = {
         contentType: 'application/json',
         schema: { type: 'object' },
         example: { name: 'Alice' },
+        contents: {
+          'application/json': { schema: { type: 'object' }, example: { name: 'Alice' } },
+        },
       },
       responses: [
         { statusCode: 201, description: 'Created' },

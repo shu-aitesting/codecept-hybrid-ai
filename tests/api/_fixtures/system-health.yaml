@@ -1,0 +1,319 @@
+openapi: 3.0.3
+info:
+  title: System Health API
+  version: 1.0.0
+servers:
+  - url: https://api.example.com
+
+components:
+  securitySchemes:
+    TokenAuth:
+      type: apiKey
+      in: header
+      name: Token
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: John Doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        role:
+          type: string
+          enum:
+            - admin
+            - user
+            - guest
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - email
+
+security:
+  - TokenAuth: []
+
+paths:
+  /ping:
+    get:
+      operationId: getPing
+      summary: Health check - no auth
+      tags:
+        - Ping
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                required:
+                  - status
+
+  /users:
+    get:
+      operationId: getUsers
+      summary: List users
+      tags:
+        - User
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        email:
+                          type: string
+                          format: email
+                      required:
+                        - id
+                        - name
+                        - email
+                  total:
+                    type: integer
+
+    post:
+      operationId: createUser
+      summary: Create user
+      tags:
+        - User
+      parameters:
+        - name: Lng
+          in: header
+          required: true
+          schema:
+            type: string
+            example: vi-VN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                  example: John Doe
+                email:
+                  type: string
+                  format: email
+                  pattern: '^[^@]+@[^@]+\.[^@]+$'
+                  example: john@example.com
+                role:
+                  type: string
+                  enum:
+                    - admin
+                    - user
+                    - guest
+                  default: user
+              required:
+                - name
+                - email
+            example:
+              name: Jane Doe
+              email: jane@example.com
+              role: user
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: John Doe
+                  email:
+                    type: string
+                    format: email
+                    example: john@example.com
+                  role:
+                    type: string
+                    enum:
+                      - admin
+                      - user
+                      - guest
+                  createdAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - name
+                  - email
+        '400':
+          description: Validation error
+
+  /users/{id}:
+    get:
+      operationId: getUserById
+      summary: Get user by ID
+      tags:
+        - User
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: John Doe
+                  email:
+                    type: string
+                    format: email
+                    example: john@example.com
+                  role:
+                    type: string
+                    enum:
+                      - admin
+                      - user
+                      - guest
+                  createdAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - name
+                  - email
+        '404':
+          description: Not found
+
+    put:
+      operationId: updateUser
+      summary: Update user
+      tags:
+        - User
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                email:
+                  type: string
+                  format: email
+              required:
+                - name
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: John Doe
+                  email:
+                    type: string
+                    format: email
+                    example: john@example.com
+                  role:
+                    type: string
+                    enum:
+                      - admin
+                      - user
+                      - guest
+                  createdAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - name
+                  - email
+        '404':
+          description: Not found
+
+    delete:
+      operationId: deleteUser
+      summary: Delete user
+      tags:
+        - User
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '204':
+          description: No content
+        '404':
+          description: Not found
