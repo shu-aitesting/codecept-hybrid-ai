@@ -23,7 +23,7 @@ const OAS3_FIXTURE = {
         operationId: 'listUsers',
         summary: 'List all users',
         tags: ['User'],
-        parameters: [{ name: 'page', in: 'query', required: false }],
+        parameters: [{ name: 'page', in: 'query', required: false, schema: { type: 'integer' } }],
         responses: {
           '200': {
             description: 'OK',
@@ -64,14 +64,14 @@ const OAS3_FIXTURE = {
       get: {
         operationId: 'getUser',
         tags: ['User'],
-        parameters: [{ name: 'id', in: 'path', required: true }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
         responses: { '200': { description: 'OK' }, '404': { description: 'Not Found' } },
         deprecated: true,
       },
       delete: {
         operationId: 'deleteUser',
         tags: ['User'],
-        parameters: [{ name: 'id', in: 'path', required: true }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
         responses: { '204': { description: 'No Content' } },
       },
     },
@@ -100,7 +100,9 @@ const SWAGGER2_FIXTURE = {
         operationId: 'listProducts',
         tags: ['Product'],
         parameters: [],
-        responses: { '200': { description: 'OK', schema: { type: 'array' } } },
+        responses: {
+          '200': { description: 'OK', schema: { type: 'array', items: { type: 'object' } } },
+        },
       },
       post: {
         operationId: 'createProduct',
@@ -395,7 +397,7 @@ describe('SwaggerParser.parse — Swagger 2.0', () => {
     const listProducts = result.groups
       .find((g) => g.groupName === 'Product')!
       .endpoints.find((e) => e.operationId === 'listProducts')!;
-    expect(listProducts.responses[0].schema).toEqual({ type: 'array' });
+    expect(listProducts.responses[0].schema).toEqual({ type: 'array', items: { type: 'object' } });
   });
 });
 
@@ -624,7 +626,9 @@ describe('SwaggerParser.parse — edge cases', () => {
         '/things': {
           summary: 'Things resource',
           description: 'CRUD',
-          parameters: [{ name: 'X-Tenant', in: 'header', required: true }],
+          parameters: [
+            { name: 'X-Tenant', in: 'header', required: true, schema: { type: 'string' } },
+          ],
           get: {
             operationId: 'listThings',
             tags: ['Thing'],

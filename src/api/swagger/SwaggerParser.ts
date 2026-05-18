@@ -4,7 +4,7 @@ import * as path from 'node:path';
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const SwaggerParserLib = require('@apidevtools/swagger-parser');
 
-// ─── Public interfaces ───────────────────────────────────────────────────────
+// --- Public interfaces ---
 
 export interface SwaggerParameter {
   name: string;
@@ -12,13 +12,28 @@ export interface SwaggerParameter {
   required: boolean;
   schema?: Record<string, unknown>;
   description?: string;
+  // Constraint fields (2.2) — from schema sub-object (OAS3) or param directly (Swagger 2)
+  enum?: unknown[];
+  format?: string;
+  pattern?: string;
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  example?: unknown;
+  default?: unknown;
 }
 
 export interface SwaggerRequestBody {
   required: boolean;
+  // Back-compat shorthand — first JSON content type
   contentType: string;
   schema: Record<string, unknown>;
-  example?: Record<string, unknown>;
+  example?: unknown;
+  // Full contents map (2.3) — all media types
+  contents: Record<string, { schema: Record<string, unknown>; example?: unknown }>;
+  // Collected examples from all media types (2.12)
+  examples?: unknown[];
 }
 
 export interface SwaggerResponseSchema {
@@ -42,9 +57,7 @@ export interface SwaggerEndpoint {
 }
 
 export interface SwaggerGroup {
-  /** PascalCase group name derived from the tag, e.g. 'GiftList', 'User' */
   groupName: string;
-  /** Original tag string lowercased/slugified for file naming, e.g. 'gift-list', 'user' */
   tagSlug: string;
   endpoints: SwaggerEndpoint[];
 }
@@ -55,18 +68,15 @@ export interface SwaggerParserResult {
   baseUrl: string;
   groups: SwaggerGroup[];
   securitySchemes: Record<string, unknown>;
+  globalSecurity?: Array<Record<string, string[]>>;
 }
 
-// ─── HTTP methods we care about ──────────────────────────────────────────────
-
 const SUPPORTED_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
-
-// ─── SwaggerParser ───────────────────────────────────────────────────────────
 
 export class SwaggerParser {
   /**
    * Parse a Swagger/OpenAPI spec from a local file path or https:// URL.
-   * Handles OAS 3.x and Swagger 2.x. Resolves all $ref references inline.
+   * Validates the spec, resolves all $ref references inline, and warns on circular refs.
    */
   static async parse(input: string): Promise<SwaggerParserResult> {
     const doc = await SwaggerParser.loadDocument(input);
@@ -74,7 +84,7 @@ export class SwaggerParser {
     const groups = SwaggerParser.groupByTag(endpoints);
     const baseUrl = SwaggerParser.extractBaseUrl(doc);
     const securitySchemes = SwaggerParser.extractSecuritySchemes(doc);
-
+    const globalSecurity = SwaggerParser.extractGlobalSecurity(doc);
     const info = (doc as Record<string, unknown>)['info'] as Record<string, string> | undefined;
 
     return {
@@ -83,21 +93,39 @@ export class SwaggerParser {
       baseUrl,
       groups,
       securitySchemes,
+      globalSecurity,
     };
   }
 
-  // ─── Private: load & validate ──────────────────────────────────────────────
-
+  // (2.4 + 2.5) Validate spec first, then dereference via instance to detect circular refs
   private static async loadDocument(input: string): Promise<unknown> {
     const isUrl = input.startsWith('http://') || input.startsWith('https://');
     if (!isUrl && !fs.existsSync(input)) {
       throw new Error(`Swagger spec not found: ${path.resolve(input)}`);
     }
-    // swagger-parser dereferences all $ref and validates the spec
-    return SwaggerParserLib.dereference(input);
-  }
 
-  // ─── Private: endpoint extraction ─────────────────────────────────────────
+    try {
+      await SwaggerParserLib.validate(input);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Swagger spec validation failed for "${input}": ${msg}`);
+    }
+
+    // Use an instance to inspect $refs.circular after dereference
+    const parser = new SwaggerParserLib();
+    const api = await parser.dereference(input, {
+      dereference: { circular: 'ignore' },
+    });
+
+    if (parser.$refs.circular) {
+      console.warn(
+        `[SwaggerParser] Circular $ref detected in "${input}". ` +
+          `Circular nodes will be treated as empty objects during extraction.`,
+      );
+    }
+
+    return api;
+  }
 
   private static extractEndpoints(doc: unknown): SwaggerEndpoint[] {
     const d = doc as Record<string, unknown>;
@@ -110,7 +138,6 @@ export class SwaggerParser {
     for (const [urlPath, methods] of Object.entries(paths)) {
       if (!methods || typeof methods !== 'object') continue;
 
-      // Collect path-level parameters (inherited by all methods)
       const pathLevelParams = SwaggerParser.normalizeParameters(
         (methods['parameters'] ?? []) as unknown[],
         isOas3,
@@ -118,12 +145,11 @@ export class SwaggerParser {
 
       for (const [httpMethod, operation] of Object.entries(methods)) {
         if (!SUPPORTED_METHODS.has(httpMethod)) continue;
-        const op = operation as Record<string, unknown>;
 
+        const op = operation as Record<string, unknown>;
         const method = httpMethod.toUpperCase() as SwaggerEndpoint['method'];
         const tags = Array.isArray(op['tags']) ? (op['tags'] as string[]) : [];
 
-        // Merge path-level params with operation-level params (operation wins on name clash)
         const opParams = SwaggerParser.normalizeParameters(
           (op['parameters'] ?? []) as unknown[],
           isOas3,
@@ -136,7 +162,6 @@ export class SwaggerParser {
 
         const responses = SwaggerParser.normalizeResponses(op['responses'], isOas3);
 
-        // Generate operationId if missing
         const operationId =
           typeof op['operationId'] === 'string' && op['operationId']
             ? op['operationId']
@@ -165,19 +190,38 @@ export class SwaggerParser {
     return endpoints;
   }
 
-  // ─── Private: parameter normalization ─────────────────────────────────────
-
-  private static normalizeParameters(params: unknown[], _isOas3: boolean): SwaggerParameter[] {
+  // (2.2) Extract constraint fields from schema sub-object (OAS3) or param directly (Swagger 2)
+  private static normalizeParameters(params: unknown[], isOas3: boolean): SwaggerParameter[] {
     if (!Array.isArray(params)) return [];
     return params
       .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
-      .map((p) => ({
-        name: String(p['name'] ?? ''),
-        in: (p['in'] as SwaggerParameter['in']) ?? 'query',
-        required: p['required'] === true,
-        schema: (p['schema'] as Record<string, unknown>) ?? undefined,
-        description: typeof p['description'] === 'string' ? p['description'] : undefined,
-      }));
+      .map((p) => {
+        const schema = (p['schema'] as Record<string, unknown>) ?? {};
+        // OAS3: constraints are nested in schema; Swagger 2: constraints are on the param itself
+        const src = isOas3 ? schema : p;
+
+        return {
+          name: String(p['name'] ?? ''),
+          in: (p['in'] as SwaggerParameter['in']) ?? 'query',
+          required: p['required'] === true,
+          schema: Object.keys(schema).length > 0 ? schema : undefined,
+          description: typeof p['description'] === 'string' ? p['description'] : undefined,
+          enum: Array.isArray(src['enum']) ? (src['enum'] as unknown[]) : undefined,
+          format: typeof src['format'] === 'string' ? src['format'] : undefined,
+          pattern: typeof src['pattern'] === 'string' ? src['pattern'] : undefined,
+          minimum: typeof src['minimum'] === 'number' ? src['minimum'] : undefined,
+          maximum: typeof src['maximum'] === 'number' ? src['maximum'] : undefined,
+          minLength: typeof src['minLength'] === 'number' ? src['minLength'] : undefined,
+          maxLength: typeof src['maxLength'] === 'number' ? src['maxLength'] : undefined,
+          example:
+            src['example'] !== undefined
+              ? src['example']
+              : p['example'] !== undefined
+                ? p['example']
+                : undefined,
+          default: src['default'],
+        };
+      });
   }
 
   private static mergeParameters(
@@ -190,28 +234,48 @@ export class SwaggerParser {
     return [...map.values()];
   }
 
-  // ─── Private: request body ─────────────────────────────────────────────────
-
+  // (2.3 + 2.12) Build full contents map; collect examples across all media types
   private static extractRequestBodyOas3(requestBody: unknown): SwaggerRequestBody | undefined {
     if (!requestBody || typeof requestBody !== 'object') return undefined;
     const rb = requestBody as Record<string, unknown>;
     const content = rb['content'] as Record<string, unknown> | undefined;
     if (!content) return undefined;
 
-    // Prefer application/json; fall back to first content type
+    const contents: Record<string, { schema: Record<string, unknown>; example?: unknown }> = {};
+    const allExamples: unknown[] = [];
+
+    for (const [ct, mediaTypeRaw] of Object.entries(content)) {
+      const mediaType = (mediaTypeRaw ?? {}) as Record<string, unknown>;
+      const schema = (mediaType['schema'] as Record<string, unknown>) ?? {};
+      const example = mediaType['example'] as unknown | undefined;
+
+      contents[ct] = { schema, ...(example !== undefined ? { example } : {}) };
+
+      // Collect named examples (OAS3 `examples` object: { name: { value: ... } })
+      const examplesObj = mediaType['examples'] as Record<string, unknown> | undefined;
+      if (examplesObj) {
+        for (const exItem of Object.values(examplesObj)) {
+          const ex = exItem as Record<string, unknown> | null;
+          if (ex?.['value'] !== undefined) allExamples.push(ex['value']);
+        }
+      }
+      // Collect shorthand `example`
+      if (example !== undefined) allExamples.push(example);
+    }
+
     const contentType =
       Object.keys(content).find((k) => k.includes('json')) ?? Object.keys(content)[0];
     if (!contentType) return undefined;
 
-    const mediaType = content[contentType] as Record<string, unknown>;
-    const schema = (mediaType?.['schema'] as Record<string, unknown>) ?? {};
-    const example = mediaType?.['example'] as Record<string, unknown> | undefined;
+    const primary = contents[contentType];
 
     return {
       required: rb['required'] === true,
       contentType,
-      schema,
-      example,
+      schema: primary.schema,
+      example: primary.example,
+      contents,
+      ...(allExamples.length > 0 ? { examples: allExamples } : {}),
     };
   }
 
@@ -220,15 +284,15 @@ export class SwaggerParser {
   ): SwaggerRequestBody | undefined {
     const bodyParam = params.find((p) => p.in === 'body');
     if (!bodyParam) return undefined;
+    const schema = bodyParam.schema ?? {};
     return {
       required: bodyParam.required,
       contentType: 'application/json',
-      schema: bodyParam.schema ?? {},
+      schema,
       example: undefined,
+      contents: { 'application/json': { schema } },
     };
   }
-
-  // ─── Private: response normalization ──────────────────────────────────────
 
   private static normalizeResponses(responses: unknown, isOas3: boolean): SwaggerResponseSchema[] {
     if (!responses || typeof responses !== 'object') return [];
@@ -242,12 +306,11 @@ export class SwaggerParser {
       let schema: Record<string, unknown> | undefined;
 
       if (isOas3) {
-        const content = r['content'] as Record<string, unknown> | undefined;
-        if (content) {
-          const mediaKey =
-            Object.keys(content).find((k) => k.includes('json')) ?? Object.keys(content)[0];
+        const rc = r['content'] as Record<string, unknown> | undefined;
+        if (rc) {
+          const mediaKey = Object.keys(rc).find((k) => k.includes('json')) ?? Object.keys(rc)[0];
           if (mediaKey) {
-            const media = content[mediaKey] as Record<string, unknown>;
+            const media = rc[mediaKey] as Record<string, unknown>;
             schema = media?.['schema'] as Record<string, unknown> | undefined;
           }
         }
@@ -265,18 +328,13 @@ export class SwaggerParser {
     return result.sort((a, b) => a.statusCode - b.statusCode);
   }
 
-  // ─── Private: grouping ────────────────────────────────────────────────────
-
   private static groupByTag(endpoints: SwaggerEndpoint[]): SwaggerGroup[] {
     const map = new Map<string, SwaggerEndpoint[]>();
-
     for (const ep of endpoints) {
-      // An endpoint can have multiple tags — assign to first tag only
       const tag = ep.tags[0] ?? 'Default';
       if (!map.has(tag)) map.set(tag, []);
       map.get(tag)!.push(ep);
     }
-
     return [...map.entries()].map(([tag, eps]) => ({
       groupName: SwaggerParser.toPascalCase(tag),
       tagSlug: SwaggerParser.toSlug(tag),
@@ -284,18 +342,12 @@ export class SwaggerParser {
     }));
   }
 
-  // ─── Private: base URL extraction ─────────────────────────────────────────
-
   private static extractBaseUrl(doc: unknown): string {
     const d = doc as Record<string, unknown>;
-
-    // OAS 3: doc.servers[0].url
     if (typeof d['openapi'] === 'string') {
       const servers = d['servers'] as Array<{ url: string }> | undefined;
       if (servers?.[0]?.url) return servers[0].url.replace(/\/$/, '');
     }
-
-    // Swagger 2: scheme + host + basePath
     const schemes = d['schemes'] as string[] | undefined;
     const scheme = schemes?.[0] ?? 'https';
     const host = typeof d['host'] === 'string' ? d['host'] : 'api.example.com';
@@ -303,20 +355,21 @@ export class SwaggerParser {
     return `${scheme}://${host}${basePath}`.replace(/\/$/, '');
   }
 
-  // ─── Private: security schemes ────────────────────────────────────────────
-
   private static extractSecuritySchemes(doc: unknown): Record<string, unknown> {
     const d = doc as Record<string, unknown>;
-
-    // OAS 3
     const components = d['components'] as Record<string, unknown> | undefined;
     if (components?.['securitySchemes']) {
       return components['securitySchemes'] as Record<string, unknown>;
     }
-
-    // Swagger 2
     const securityDefs = d['securityDefinitions'] as Record<string, unknown> | undefined;
     return securityDefs ?? {};
+  }
+
+  private static extractGlobalSecurity(doc: unknown): Array<Record<string, string[]>> | undefined {
+    const d = doc as Record<string, unknown>;
+    return Array.isArray(d['security'])
+      ? (d['security'] as Array<Record<string, string[]>>)
+      : undefined;
   }
 
   /**
@@ -347,8 +400,6 @@ export class SwaggerParser {
     return [...names];
   }
 
-  // ─── Private: string helpers ──────────────────────────────────────────────
-
   /**
    * Convert tag string to PascalCase group name.
    * 'gift-list' → 'GiftList', 'user_accounts' → 'UserAccounts', 'orders' → 'Orders'
@@ -359,7 +410,6 @@ export class SwaggerParser {
       .replace(/^(.)/, (c: string) => c.toUpperCase());
   }
 
-  /** Convert tag to lowercase slug for file names. 'Gift List' → 'gift-list' */
   static toSlug(tag: string): string {
     return tag
       .toLowerCase()
@@ -367,10 +417,6 @@ export class SwaggerParser {
       .replace(/[^a-z0-9-]/g, '');
   }
 
-  /**
-   * Generate a fallback operationId when the spec omits one.
-   * 'get /users/{id}' → 'getUsers'
-   */
   private static generateOperationId(method: string, urlPath: string): string {
     const segments = urlPath
       .split('/')
