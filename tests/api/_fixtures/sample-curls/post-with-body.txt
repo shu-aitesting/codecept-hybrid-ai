@@ -1,0 +1,6 @@
+curl -X POST \
+  -H "Token: my-api-token" \
+  -H "Content-Type: application/json" \
+  -H "Lng: vi-VN" \
+  -d '{"name": "John Doe", "email": "john@example.com", "role": "user"}' \
+  "https://api.example.com/users"
