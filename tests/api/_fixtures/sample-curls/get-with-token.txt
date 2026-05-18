@@ -1,0 +1,5 @@
+curl -X GET \
+  -H "Token: my-api-token" \
+  -H "Lng: vi-VN" \
+  -H "Tz: Asia/Ho_Chi_Minh" \
+  "https://api.example.com/users"
