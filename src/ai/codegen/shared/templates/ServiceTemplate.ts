@@ -37,8 +37,8 @@ export function renderService(
   // Assemble file: each major block separated by a blank line
   const sections: string[][] = [];
 
+  sections.push([`import { config } from '@core/config/ConfigLoader';`]);
   sections.push([
-    `import { config } from '@core/config/ConfigLoader';`,
     `import { RestClient } from '@api/rest/RestClient';`,
     `import { RestRequestBuilder } from '@api/rest/RestRequestBuilder';`,
   ]);
@@ -171,6 +171,9 @@ function buildMethod(ep: EndpointModel, constMap: Map<string, string>): string {
     for (const h of ep.headerParams.required) {
       lines.push(`    builder.header('${h.name}', ${h.paramName});`);
     }
+    for (const q of reqQueryParams) {
+      lines.push(`    builder.query('${q.name}', ${q.name});`);
+    }
     for (const q of optQueryParams) {
       lines.push(
         `    if (opts?.${q.name} !== undefined) builder.query('${q.name}', opts.${q.name}!);`,
@@ -189,6 +192,9 @@ function buildMethod(ep: EndpointModel, constMap: Map<string, string>): string {
     if (ep.requestBody) chain.push(`      .json(body)`);
     for (const h of ep.headerParams.required) {
       chain.push(`      .header('${h.name}', ${h.paramName})`);
+    }
+    for (const q of reqQueryParams) {
+      chain.push(`      .query('${q.name}', ${q.name})`);
     }
     chain.push(`      .build();`);
     lines.push(chain.join('\n'));

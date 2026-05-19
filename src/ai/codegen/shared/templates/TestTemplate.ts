@@ -61,8 +61,9 @@ export function renderTest(
   // Imports
   const namedImports = [className, ...schemaConstNames, ...requestTypeNames].join(', ');
   lines.push(`import { RestClient } from '@api/rest/RestClient';`);
-  lines.push(`import { DataContext } from '@ai/data/DataContext';`);
   lines.push(`import { ${namedImports} } from '${importPath}';`);
+  lines.push('');
+  lines.push(`import { DataContext } from '@ai/data/DataContext';`);
   lines.push('');
 
   // Feature declaration
