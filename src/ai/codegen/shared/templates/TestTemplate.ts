@@ -7,6 +7,13 @@ export interface RenderablePlan {
   plan: TestCasePlan;
   title: string;
   payload?: unknown;
+  /**
+   * Human-readable, stable test case identifier (e.g. "PET-001"). Assigned by
+   * TestIdRegistry before rendering. When set, the scenario title is prefixed
+   * with `[displayId]` and an `@displayId` tag is emitted so the runner script
+   * can grep tests by ID.
+   */
+  displayId?: string;
 }
 
 export function renderTest(
@@ -102,10 +109,12 @@ export function renderTest(
 // ---------------------------------------------------------------------------
 
 function renderScenario(rp: RenderablePlan, className: string): string {
-  const { plan, title } = rp;
-  const tagChain = plan.tags.map((t) => `.tag('${t}')`).join('');
+  const { plan, title, displayId } = rp;
+  const idPrefix = displayId ? `[${displayId}] ` : '';
+  const idTag = displayId ? `.tag('@${displayId}')` : '';
+  const tagChain = idTag + plan.tags.map((t) => `.tag('${t}')`).join('');
   const body = renderBody(rp, className);
-  return `Scenario('${escapeStr(title)}', async () => {\n${body}\n})${tagChain};`;
+  return `Scenario('${escapeStr(idPrefix + title)}', async () => {\n${body}\n})${tagChain};`;
 }
 
 function renderBody(rp: RenderablePlan, className: string): string {
