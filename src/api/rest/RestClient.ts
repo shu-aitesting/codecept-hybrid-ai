@@ -1,7 +1,9 @@
 import { APIRequestContext, request } from 'playwright';
 
 import { config } from '../../core/config/ConfigLoader';
+import { Logger } from '../../core/logger/Logger';
 
+import { tryAllureAttach } from './allureAttach';
 import {
   AmbientHeaderOverrides,
   AmbientKind,
@@ -10,12 +12,6 @@ import {
 } from './ambientHeaders';
 import { RestRequest } from './RestRequest';
 import { RestResponse } from './RestResponse';
-
-const DEBUG = process.env.LOG_LEVEL === 'debug';
-
-function log(msg: string): void {
-  if (DEBUG) console.log(`[RestClient] ${msg}`);
-}
 
 export interface RestClientInitOpts {
   baseURL?: string;
@@ -44,17 +40,12 @@ export interface RestClientInitOpts {
 export class RestClient {
   private context?: APIRequestContext;
 
-  /**
-   * Initialize the underlying Playwright APIRequestContext. Accepts either a
-   * raw `baseURL` string (legacy form) or an options object.
-   */
   async init(opts?: string | RestClientInitOpts): Promise<void> {
     const normalized: RestClientInitOpts =
       typeof opts === 'string' ? { baseURL: opts } : (opts ?? { baseURL: undefined });
 
     const ambient = buildAmbientHeaders(config, normalized.headerOverrides);
 
-    // Remove ambient entries for suppressed kinds — name resolved via same precedence.
     if (normalized.skipAmbient) {
       for (const kind of normalized.skipAmbient) {
         const resolvedKey = resolveAmbientName(kind, config, normalized.headerOverrides);
@@ -74,16 +65,16 @@ export class RestClient {
       failOnStatusCode: normalized.failOnStatusCode ?? false,
     });
 
-    log(
-      `Initialized baseURL="${normalized.baseURL ?? '(none)'}" ` +
-        `ambientHeaders=[${Object.keys(headers).join(', ') || 'none'}]`,
-    );
+    Logger.debug('[RestClient] Initialized', {
+      baseURL: normalized.baseURL ?? '(none)',
+      ambientHeaders: Object.keys(headers),
+    });
   }
 
   async dispose(): Promise<void> {
     await this.context?.dispose();
     this.context = undefined;
-    log('Context disposed');
+    Logger.debug('[RestClient] Context disposed');
   }
 
   async send<T = unknown>(req: RestRequest): Promise<RestResponse<T>> {
@@ -92,7 +83,6 @@ export class RestClient {
     }
     const ctx = this.context!;
 
-    log(`→ ${req.method} ${req.buildUrl()}`);
     const start = Date.now();
 
     const response = await ctx.fetch(req.buildUrl(), {
@@ -103,7 +93,7 @@ export class RestClient {
     });
 
     const durationMs = Date.now() - start;
-    const headers = response.headers();
+    const responseHeaders = response.headers();
 
     let body: T;
     try {
@@ -112,7 +102,45 @@ export class RestClient {
       body = (await response.text()) as unknown as T;
     }
 
-    log(`← ${response.status()} (${durationMs}ms)`);
-    return new RestResponse<T>(response.status(), headers, body, durationMs);
+    // Single consolidated log block per API call — makes retries easy to spot.
+    // `toCurl()` is multi-line (joined with " \\\n  "), so each continuation
+    // line must be prefixed with the box border or it visually escapes the box.
+    const bodyStr = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+    const bodyPreview = bodyStr.slice(0, 500);
+    const curlLines = req
+      .toCurl()
+      .split('\n')
+      .map((line, i) => (i === 0 ? `│  cURL   : ${line}` : `│           ${line.trimStart()}`));
+
+    console.log(
+      [
+        ``,
+        `┌─ API Call ─────────────────────────────────────────────`,
+        `│  ${req.method} ${req.buildUrl()}`,
+        `│  Status : ${response.status()} (${durationMs}ms)`,
+        `│  Headers: ${JSON.stringify(req.headers)}`,
+        req.body != null ? `│  Body   : ${JSON.stringify(req.body)}` : null,
+        ...curlLines,
+        `├─ Response ──────────────────────────────────────────────`,
+        `│  Content-Type: ${responseHeaders['content-type'] ?? '(none)'}`,
+        `│  Body: ${bodyPreview}${bodyStr.length > 500 ? ' …(truncated)' : ''}`,
+        `└─────────────────────────────────────────────────────────`,
+        ``,
+      ]
+        .filter((l) => l !== null)
+        .join('\n'),
+    );
+
+    const restResponse = new RestResponse<T>(
+      response.status(),
+      responseHeaders,
+      body,
+      durationMs,
+      req,
+    );
+
+    tryAllureAttach(req, restResponse as RestResponse<unknown>);
+
+    return restResponse;
   }
 }

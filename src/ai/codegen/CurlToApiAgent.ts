@@ -14,6 +14,7 @@ import { renderService } from '@ai/codegen/shared/templates/ServiceTemplate';
 import { RenderablePlan, renderTest } from '@ai/codegen/shared/templates/TestTemplate';
 import { TestCasePlan } from '@ai/codegen/shared/TestCasePlan';
 import { TestCasePlanner } from '@ai/codegen/shared/TestCasePlanner';
+import { TestIdRegistry } from '@ai/codegen/shared/TestIdRegistry';
 import { DataContext } from '@ai/data/DataContext';
 import { DataFactory } from '@ai/data/DataFactory';
 
@@ -195,6 +196,21 @@ export class CurlToApiAgent {
 
     // 6. Render service + test (cURL always produces a single-endpoint group)
     const group = { groupName: input.serviceName, tagSlug: toSlug(input.serviceName) };
+
+    // 6b. Assign stable display IDs (e.g. USERS-001). Same key on regeneration
+    // returns the same ID; carries a qaseId slot for future Qase mapping.
+    const testFileRel = path
+      .relative(
+        process.cwd(),
+        path.join(process.cwd(), 'tests', 'api', 'smoke', `${group.tagSlug}.test.ts`),
+      )
+      .replace(/\\/g, '/');
+    const registry = new TestIdRegistry();
+    for (const rp of renderablePlans) {
+      rp.displayId = registry.assignId(group.groupName, rp.plan, testFileRel);
+    }
+    registry.flush();
+
     const serviceTs = renderService(group, [endpoint]);
     const testTs = renderTest(group, renderablePlans);
     const output: CurlToApiOutput = { serviceTs, testTs };

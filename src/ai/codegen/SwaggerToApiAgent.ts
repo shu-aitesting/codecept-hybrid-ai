@@ -16,6 +16,7 @@ import { renderService } from '@ai/codegen/shared/templates/ServiceTemplate';
 import { RenderablePlan, renderTest } from '@ai/codegen/shared/templates/TestTemplate';
 import { TestCasePlan } from '@ai/codegen/shared/TestCasePlan';
 import { TestCasePlanner } from '@ai/codegen/shared/TestCasePlanner';
+import { TestIdRegistry } from '@ai/codegen/shared/TestIdRegistry';
 import { DataContext } from '@ai/data/DataContext';
 import { DataFactory } from '@ai/data/DataFactory';
 
@@ -170,6 +171,18 @@ export class SwaggerToApiAgent {
 
     // 5. Build renderable plans: payload per plan + enriched titles
     const renderablePlans = await this.buildRenderablePlans(plans);
+
+    // 5b. Assign stable display IDs (e.g. PET-001) — survives regeneration,
+    // grepable from --grep, and carries a qaseId slot for future Qase mapping.
+    const testOutputDir = input.testOutputDir ?? path.join(process.cwd(), 'tests', 'api', 'smoke');
+    const testFileRel = path
+      .relative(process.cwd(), path.join(testOutputDir, `${input.group.tagSlug}.test.ts`))
+      .replace(/\\/g, '/');
+    const registry = new TestIdRegistry();
+    for (const rp of renderablePlans) {
+      rp.displayId = registry.assignId(input.group.groupName, rp.plan, testFileRel);
+    }
+    registry.flush();
 
     // 6. Render service + test files (deterministic templates)
     const serviceTs = renderService(input.group, filtered);

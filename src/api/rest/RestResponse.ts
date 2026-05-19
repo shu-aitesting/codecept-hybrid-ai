@@ -1,3 +1,4 @@
+import type { RestRequest } from './RestRequest';
 import { schemaValidator } from './SchemaValidator';
 
 export class RestResponse<T = unknown> {
@@ -6,13 +7,28 @@ export class RestResponse<T = unknown> {
     public readonly headers: Record<string, string>,
     public readonly body: T,
     public readonly durationMs: number,
+    public readonly request?: RestRequest,
   ) {}
+
+  private _context(): string {
+    if (!this.request) return '';
+    return `\nURL:  ${this.request.buildUrl()}\nCurl: ${this.request.toCurl()}`;
+  }
+
+  // Bounded snippet of the response body for inclusion in assertion error
+  // messages. Without a cap, a 1000-item list response would flood the terminal
+  // and CI logs; 2000 chars is enough to diagnose most failures.
+  private _bodyStr(): string {
+    const raw = typeof this.body === 'string' ? this.body : JSON.stringify(this.body, null, 2);
+    return raw.length > 2000 ? raw.slice(0, 2000) + ' …(truncated)' : raw;
+  }
 
   expectStatus(expected: number): this {
     if (this.status !== expected) {
-      const snippet = JSON.stringify(this.body, null, 2).slice(0, 500);
       throw new Error(
-        `[RestResponse] Expected HTTP ${expected}, got ${this.status}.\nBody: ${snippet}`,
+        `[RestResponse] Expected HTTP ${expected}, got ${this.status}.` +
+          this._context() +
+          `\nBody: ${this._bodyStr()}`,
       );
     }
     return this;
@@ -22,7 +38,8 @@ export class RestResponse<T = unknown> {
     const actual = this.headers[name.toLowerCase()];
     if (actual !== expected) {
       throw new Error(
-        `[RestResponse] Header "${name}": expected "${expected}", got "${actual ?? '(missing)'}"`,
+        `[RestResponse] Header "${name}": expected "${expected}", got "${actual ?? '(missing)'}".` +
+          this._context(),
       );
     }
     return this;
@@ -32,7 +49,8 @@ export class RestResponse<T = unknown> {
     const actual = this._getPath(path);
     if (actual !== expected) {
       throw new Error(
-        `[RestResponse] Path "${path}": expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+        `[RestResponse] Path "${path}": expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}.` +
+          this._context(),
       );
     }
     return this;
@@ -42,7 +60,8 @@ export class RestResponse<T = unknown> {
     const actual = this._getPath(path);
     if (actual === undefined || actual === null) {
       throw new Error(
-        `[RestResponse] Path "${path}" is ${String(actual)} — expected a defined, non-null value`,
+        `[RestResponse] Path "${path}" is ${String(actual)} — expected a defined, non-null value.` +
+          this._context(),
       );
     }
     return this;
@@ -51,7 +70,7 @@ export class RestResponse<T = unknown> {
   expectBodyContains(substring: string): this {
     const raw = typeof this.body === 'string' ? this.body : JSON.stringify(this.body);
     if (!raw.includes(substring)) {
-      throw new Error(`[RestResponse] Body does not contain "${substring}"`);
+      throw new Error(`[RestResponse] Body does not contain "${substring}".` + this._context());
     }
     return this;
   }
@@ -59,7 +78,9 @@ export class RestResponse<T = unknown> {
   expectSchema(schema: object): this {
     const result = schemaValidator.validate(schema, this.body);
     if (!result.valid) {
-      throw new Error(`[RestResponse] Schema validation failed:\n${result.errors.join('\n')}`);
+      throw new Error(
+        `[RestResponse] Schema validation failed:\n${result.errors.join('\n')}` + this._context(),
+      );
     }
     return this;
   }
@@ -68,7 +89,8 @@ export class RestResponse<T = unknown> {
     const actual = this.headers['content-type'] ?? '';
     if (!actual.startsWith(expected)) {
       throw new Error(
-        `[RestResponse] Content-Type: expected "${expected}", got "${actual || '(missing)'}"`,
+        `[RestResponse] Content-Type: expected "${expected}", got "${actual || '(missing)'}".` +
+          this._context(),
       );
     }
     return this;
