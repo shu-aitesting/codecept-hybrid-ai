@@ -53,6 +53,8 @@ export interface EndpointModel {
   /** operationId list from Swagger x-depends-on extension */
   xDependsOn?: string[];
   deprecated: boolean;
+  /** True when the endpoint requires multipart/form-data or binary file upload. */
+  isFileUpload: boolean;
   source: 'swagger' | 'curl';
   summary?: string;
   tags: string[];

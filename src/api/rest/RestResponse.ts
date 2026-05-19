@@ -34,6 +34,17 @@ export class RestResponse<T = unknown> {
     return this;
   }
 
+  expectStatusRange(min: number, max: number): this {
+    if (this.status < min || this.status > max) {
+      throw new Error(
+        `[RestResponse] Expected HTTP ${min}–${max}, got ${this.status}.` +
+          this._context() +
+          `\nBody: ${this._bodyStr()}`,
+      );
+    }
+    return this;
+  }
+
   expectHeader(name: string, expected: string): this {
     const actual = this.headers[name.toLowerCase()];
     if (actual !== expected) {

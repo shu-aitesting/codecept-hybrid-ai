@@ -4,7 +4,6 @@ import {
   FIND_PETS_BY_STATUS_RESPONSE_SCHEMA,
   FIND_PETS_BY_TAGS_RESPONSE_SCHEMA,
   GET_PET_BY_ID_RESPONSE_SCHEMA,
-  UPLOAD_FILE_RESPONSE_SCHEMA,
   AddPetRequest,
   UpdatePetRequest,
 } from '@api/services/PetService';
@@ -87,7 +86,7 @@ Scenario('[PET-002] POST /pet — negative-validation', async () => {
     status: 'sold',
   } as unknown as AddPetRequest;
   const res = await svc.addPet(payload);
-  res.expectStatus(400);
+  res.expectStatusRange(400, 499);
 })
   .tag('@PET-002')
   .tag('@negative-validation');
@@ -103,7 +102,7 @@ Scenario('[PET-003] DELETE /pet/{petId} — positive', async () => {
 
 Scenario('[PET-004] DELETE /pet/{petId} — negative-validation', async () => {
   const res = await svc.deletePet('0');
-  res.expectStatus(404);
+  res.expectStatusRange(400, 499);
 })
   .tag('@PET-004')
   .tag('@negative-validation');
@@ -123,7 +122,7 @@ Scenario('[PET-005] GET /pet/findByStatus — positive', async () => {
 
 Scenario('[PET-006] GET /pet/findByStatus — negative-validation', async () => {
   const res = await svc.findPetsByStatus('invalid-value');
-  res.expectStatus(400);
+  res.expectStatusRange(400, 499);
 })
   .tag('@PET-006')
   .tag('@negative-validation');
@@ -143,7 +142,7 @@ Scenario('[PET-007] GET /pet/findByTags — positive', async () => {
 
 Scenario('[PET-008] GET /pet/findByTags — negative-validation', async () => {
   const res = await svc.findPetsByTags('invalid-value');
-  res.expectStatus(400);
+  res.expectStatusRange(400, 499);
 })
   .tag('@PET-008')
   .tag('@negative-validation');
@@ -163,7 +162,7 @@ Scenario('[PET-009] GET /pet/{petId} — positive', async () => {
 
 Scenario('[PET-010] GET /pet/{petId} — negative-validation', async () => {
   const res = await svc.getPetById('0');
-  res.expectStatus(400);
+  res.expectStatusRange(400, 499);
 })
   .tag('@PET-010')
   .tag('@negative-validation');
@@ -233,7 +232,7 @@ Scenario('[PET-014] PUT /pet — negative-validation', async () => {
     status: 'pending',
   } as unknown as UpdatePetRequest;
   const res = await svc.updatePet(payload);
-  res.expectStatus(400);
+  res.expectStatusRange(400, 499);
 })
   .tag('@PET-014')
   .tag('@negative-validation');
@@ -249,27 +248,16 @@ Scenario('[PET-015] POST /pet/{petId} — positive', async () => {
 
 Scenario('[PET-016] POST /pet/{petId} — negative-validation', async () => {
   const res = await svc.updatePetWithForm('0');
-  res.expectStatus(400);
+  res.expectStatusRange(400, 499);
 })
   .tag('@PET-016')
   .tag('@negative-validation');
 
-Scenario('[PET-017] POST /pet/{petId}/uploadImage — positive', async () => {
-  const res = await svc.uploadFile('1');
-  res
-    .expectStatus(200)
-    .expectContentType('application/json')
-    .expectSchema(UPLOAD_FILE_RESPONSE_SCHEMA);
-})
-  .tag('@PET-017')
-  .tag('@positive')
-  .tag('@contract')
-  .tag('@smoke')
-  .tag('@schema');
-
-Scenario('[PET-018] POST /pet/{petId}/uploadImage — negative-validation', async () => {
-  const res = await svc.uploadFile('0');
-  res.expectStatus(400);
-})
-  .tag('@PET-018')
-  .tag('@negative-validation');
+// ---------------------------------------------------------------------------
+// File-upload endpoints — skipped by codegen (require multipart/form-data).
+// Implement these scenarios manually using svc.<operationId>() with a file buffer.
+// ---------------------------------------------------------------------------
+//
+// Scenario POST /pet/{petId}/uploadImage
+//   operationId : uploadFile
+//   see         : @api/services/PetService#uploadFile

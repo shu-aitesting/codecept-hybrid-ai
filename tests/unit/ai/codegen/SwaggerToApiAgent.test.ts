@@ -30,6 +30,7 @@ const USER_GROUP: SwaggerGroup = {
       parameters: [],
       responses: [{ statusCode: 200, description: 'OK' }],
       deprecated: false,
+      isFileUpload: false,
     },
     {
       operationId: 'createUser',
@@ -59,6 +60,7 @@ const USER_GROUP: SwaggerGroup = {
         { statusCode: 400, description: 'Bad Request' },
       ],
       deprecated: false,
+      isFileUpload: false,
     },
   ],
 };
@@ -75,6 +77,7 @@ const ORDER_GROUP: SwaggerGroup = {
       parameters: [],
       responses: [{ statusCode: 200, description: 'OK' }],
       deprecated: false,
+      isFileUpload: false,
     },
   ],
 };
@@ -162,6 +165,7 @@ describe('SwaggerToApiAgent.run()', () => {
           parameters: [],
           responses: [{ statusCode: 200, description: 'OK' }],
           deprecated: false,
+          isFileUpload: false,
         },
       ],
     };
@@ -186,6 +190,7 @@ describe('SwaggerToApiAgent.run()', () => {
           parameters: [],
           responses: [{ statusCode: 200, description: 'OK' }],
           deprecated: true,
+          isFileUpload: false,
         },
       ],
     };

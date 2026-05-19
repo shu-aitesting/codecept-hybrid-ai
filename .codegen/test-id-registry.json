@@ -2,12 +2,13 @@
   "version": 1,
   "groupCounters": {
     "PET": 18,
-    "USER": 12,
+    "USER": 23,
     "HEALTH": 1,
     "LEGACY": 1,
     "ORDER": 1,
     "SAMPLE": 2,
-    "MIN": 1
+    "MIN": 1,
+    "STORE": 9
   },
   "entries": {
     "PET|addPet|positive||": {
@@ -405,6 +406,226 @@
       "file": "tests/api/smoke/user.test.ts",
       "qaseId": null,
       "createdAt": "2026-05-19T08:41:11.280Z"
+    },
+    "STORE|deleteOrder|positive||": {
+      "displayId": "STORE-001",
+      "group": "STORE",
+      "operationId": "deleteOrder",
+      "kind": "positive",
+      "mutationPath": null,
+      "mutationKind": null,
+      "file": "tests/api/smoke/store.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:52.490Z"
+    },
+    "STORE|deleteOrder|negative-validation|orderId|missing-required": {
+      "displayId": "STORE-002",
+      "group": "STORE",
+      "operationId": "deleteOrder",
+      "kind": "negative-validation",
+      "mutationPath": "orderId",
+      "mutationKind": "missing-required",
+      "file": "tests/api/smoke/store.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:52.490Z"
+    },
+    "STORE|getInventory|positive||": {
+      "displayId": "STORE-003",
+      "group": "STORE",
+      "operationId": "getInventory",
+      "kind": "positive",
+      "mutationPath": null,
+      "mutationKind": null,
+      "file": "tests/api/smoke/store.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:52.490Z"
+    },
+    "STORE|getInventory|negative-auth-missing|api_key|missing-token": {
+      "displayId": "STORE-004",
+      "group": "STORE",
+      "operationId": "getInventory",
+      "kind": "negative-auth-missing",
+      "mutationPath": "api_key",
+      "mutationKind": "missing-token",
+      "file": "tests/api/smoke/store.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:52.490Z"
+    },
+    "STORE|getInventory|negative-auth-invalid|api_key|invalid-token": {
+      "displayId": "STORE-005",
+      "group": "STORE",
+      "operationId": "getInventory",
+      "kind": "negative-auth-invalid",
+      "mutationPath": "api_key",
+      "mutationKind": "invalid-token",
+      "file": "tests/api/smoke/store.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:52.490Z"
+    },
+    "STORE|getOrderById|positive||": {
+      "displayId": "STORE-006",
+      "group": "STORE",
+      "operationId": "getOrderById",
+      "kind": "positive",
+      "mutationPath": null,
+      "mutationKind": null,
+      "file": "tests/api/smoke/store.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:52.490Z"
+    },
+    "STORE|getOrderById|negative-validation|orderId|missing-required": {
+      "displayId": "STORE-007",
+      "group": "STORE",
+      "operationId": "getOrderById",
+      "kind": "negative-validation",
+      "mutationPath": "orderId",
+      "mutationKind": "missing-required",
+      "file": "tests/api/smoke/store.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:52.490Z"
+    },
+    "STORE|placeOrder|positive||": {
+      "displayId": "STORE-008",
+      "group": "STORE",
+      "operationId": "placeOrder",
+      "kind": "positive",
+      "mutationPath": null,
+      "mutationKind": null,
+      "file": "tests/api/smoke/store.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:52.490Z"
+    },
+    "STORE|placeOrder|negative-validation|status|invalid-enum": {
+      "displayId": "STORE-009",
+      "group": "STORE",
+      "operationId": "placeOrder",
+      "kind": "negative-validation",
+      "mutationPath": "status",
+      "mutationKind": "invalid-enum",
+      "file": "tests/api/smoke/store.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:52.490Z"
+    },
+    "USER|createUsersWithArrayInput|positive||": {
+      "displayId": "USER-013",
+      "group": "USER",
+      "operationId": "createUsersWithArrayInput",
+      "kind": "positive",
+      "mutationPath": null,
+      "mutationKind": null,
+      "file": "tests/api/smoke/user.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:54.884Z"
+    },
+    "USER|createUsersWithListInput|positive||": {
+      "displayId": "USER-014",
+      "group": "USER",
+      "operationId": "createUsersWithListInput",
+      "kind": "positive",
+      "mutationPath": null,
+      "mutationKind": null,
+      "file": "tests/api/smoke/user.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:54.884Z"
+    },
+    "USER|deleteUser|positive||": {
+      "displayId": "USER-015",
+      "group": "USER",
+      "operationId": "deleteUser",
+      "kind": "positive",
+      "mutationPath": null,
+      "mutationKind": null,
+      "file": "tests/api/smoke/user.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:54.884Z"
+    },
+    "USER|deleteUser|negative-validation|username|missing-required": {
+      "displayId": "USER-016",
+      "group": "USER",
+      "operationId": "deleteUser",
+      "kind": "negative-validation",
+      "mutationPath": "username",
+      "mutationKind": "missing-required",
+      "file": "tests/api/smoke/user.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:54.884Z"
+    },
+    "USER|getUserByName|positive||": {
+      "displayId": "USER-017",
+      "group": "USER",
+      "operationId": "getUserByName",
+      "kind": "positive",
+      "mutationPath": null,
+      "mutationKind": null,
+      "file": "tests/api/smoke/user.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:54.884Z"
+    },
+    "USER|getUserByName|negative-validation|username|missing-required": {
+      "displayId": "USER-018",
+      "group": "USER",
+      "operationId": "getUserByName",
+      "kind": "negative-validation",
+      "mutationPath": "username",
+      "mutationKind": "missing-required",
+      "file": "tests/api/smoke/user.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:54.884Z"
+    },
+    "USER|loginUser|positive||": {
+      "displayId": "USER-019",
+      "group": "USER",
+      "operationId": "loginUser",
+      "kind": "positive",
+      "mutationPath": null,
+      "mutationKind": null,
+      "file": "tests/api/smoke/user.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:54.884Z"
+    },
+    "USER|loginUser|negative-validation|username|missing-required": {
+      "displayId": "USER-020",
+      "group": "USER",
+      "operationId": "loginUser",
+      "kind": "negative-validation",
+      "mutationPath": "username",
+      "mutationKind": "missing-required",
+      "file": "tests/api/smoke/user.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:54.884Z"
+    },
+    "USER|logoutUser|positive||": {
+      "displayId": "USER-021",
+      "group": "USER",
+      "operationId": "logoutUser",
+      "kind": "positive",
+      "mutationPath": null,
+      "mutationKind": null,
+      "file": "tests/api/smoke/user.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:54.884Z"
+    },
+    "USER|updateUser|positive||": {
+      "displayId": "USER-022",
+      "group": "USER",
+      "operationId": "updateUser",
+      "kind": "positive",
+      "mutationPath": null,
+      "mutationKind": null,
+      "file": "tests/api/smoke/user.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:54.884Z"
+    },
+    "USER|updateUser|negative-validation|username|missing-required": {
+      "displayId": "USER-023",
+      "group": "USER",
+      "operationId": "updateUser",
+      "kind": "negative-validation",
+      "mutationPath": "username",
+      "mutationKind": "missing-required",
+      "file": "tests/api/smoke/user.test.ts",
+      "qaseId": null,
+      "createdAt": "2026-05-19T14:36:54.884Z"
     }
   },
   "byId": {
@@ -443,6 +664,26 @@
     "USER-009": "USER|getUsers|positive||",
     "USER-010": "USER|getUsers|negative-auth-missing|Token|missing-token",
     "USER-011": "USER|getUsers|negative-auth-invalid|Token|invalid-token",
-    "USER-012": "USER|getUsers|negative-headers|language|missing-header"
+    "USER-012": "USER|getUsers|negative-headers|language|missing-header",
+    "STORE-001": "STORE|deleteOrder|positive||",
+    "STORE-002": "STORE|deleteOrder|negative-validation|orderId|missing-required",
+    "STORE-003": "STORE|getInventory|positive||",
+    "STORE-004": "STORE|getInventory|negative-auth-missing|api_key|missing-token",
+    "STORE-005": "STORE|getInventory|negative-auth-invalid|api_key|invalid-token",
+    "STORE-006": "STORE|getOrderById|positive||",
+    "STORE-007": "STORE|getOrderById|negative-validation|orderId|missing-required",
+    "STORE-008": "STORE|placeOrder|positive||",
+    "STORE-009": "STORE|placeOrder|negative-validation|status|invalid-enum",
+    "USER-013": "USER|createUsersWithArrayInput|positive||",
+    "USER-014": "USER|createUsersWithListInput|positive||",
+    "USER-015": "USER|deleteUser|positive||",
+    "USER-016": "USER|deleteUser|negative-validation|username|missing-required",
+    "USER-017": "USER|getUserByName|positive||",
+    "USER-018": "USER|getUserByName|negative-validation|username|missing-required",
+    "USER-019": "USER|loginUser|positive||",
+    "USER-020": "USER|loginUser|negative-validation|username|missing-required",
+    "USER-021": "USER|logoutUser|positive||",
+    "USER-022": "USER|updateUser|positive||",
+    "USER-023": "USER|updateUser|negative-validation|username|missing-required"
   }
 }

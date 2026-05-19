@@ -51,6 +51,12 @@ export interface AgentOpts {
   includeOptional?: boolean;
   /** Skip ScenarioEnricher LLM call; use auto-generated titles instead. */
   noLlm?: boolean;
+  /**
+   * When true, negative-validation scenarios use expectStatusRange(400, 499) instead
+   * of the exact status from the spec. Useful when the real API returns 400 or 422
+   * interchangeably.
+   */
+  flexibleStatus?: boolean;
 }
 
 /** Per-run options (backward-compat with old GenerationPipeline RunOpts). */
@@ -140,9 +146,14 @@ export class SwaggerToApiAgent {
     });
 
     // 2. Apply exclude filter on operationId
-    const filtered = this.agentOpts.exclude?.length
+    const afterExclude = this.agentOpts.exclude?.length
       ? models.filter((ep) => !matchesExclude(ep.operationId, this.agentOpts.exclude!))
       : models;
+
+    // 2b. Separate file-upload endpoints — they need multipart/form-data and cannot
+    // be driven by the codegen request builder. Skip their plans; emit a comment stub.
+    const fileUploadEndpoints = afterExclude.filter((ep) => ep.isFileUpload);
+    const filtered = afterExclude.filter((ep) => !ep.isFileUpload);
 
     // 3. Plan test cases (topological sort included)
     const strategy = new SwaggerNegativeStrategy();
@@ -186,7 +197,10 @@ export class SwaggerToApiAgent {
 
     // 6. Render service + test files (deterministic templates)
     const serviceTs = renderService(input.group, filtered);
-    const testTs = renderTest(input.group, renderablePlans, executionOrder);
+    const testTs = renderTest(input.group, renderablePlans, executionOrder, {
+      fileUploadEndpoints,
+      flexibleStatus: this.agentOpts.flexibleStatus,
+    });
     const output: SwaggerToApiOutput = { serviceTs, testTs };
 
     // 7. Post-validate

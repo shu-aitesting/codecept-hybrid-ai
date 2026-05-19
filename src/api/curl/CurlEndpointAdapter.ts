@@ -144,6 +144,7 @@ export function curlToModel(req: RestRequest, opts: CurlToModelOpts): EndpointMo
     fieldExamples: {},
     bodyExamples: [],
     deprecated: false,
+    isFileUpload: false,
     source: 'curl',
     tags: [opts.serviceName],
   };
