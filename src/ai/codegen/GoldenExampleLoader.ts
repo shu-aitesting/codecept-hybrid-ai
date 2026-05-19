@@ -271,6 +271,12 @@ export type GoldenKey = 'fragment' | 'steps' | 'service' | 'test';
  * {{/goldenFragmentTs}}
  * ```
  */
+/**
+ * @deprecated Templates no longer need golden examples — deterministic renderers
+ * (ServiceTemplate / TestTemplate) generate file structure directly from EndpointModel.
+ * This class is retained only for HtmlToFragmentAgent and ScenarioGeneratorAgent which
+ * still use Mustache golden examples. Scheduled for removal in the next cleanup phase.
+ */
 export class GoldenExampleLoader {
   private readonly root: string;
 

@@ -1,0 +1,52 @@
+name: API Daily Health Check
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # 2 AM UTC daily
+  workflow_dispatch: # manual trigger
+
+jobs:
+  health:
+    name: Daily API Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run full API suite (@api tag — daily system health check)
+        run: npm run test:api:daily
+        env:
+          ENV: staging
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_URL: ${{ secrets.API_URL }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AI_HEAL_ENABLED: 'false'
+          SKIP_TSC_VALIDATE: 'true'
+          CI: 'true'
+          HEADLESS: 'true'
+
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-check-allure-${{ github.run_number }}
+          path: output/reports/allure/
+          retention-days: 14
+
+      # Placeholder — replace with your team's Slack/Teams webhook action.
+      # Example: https://github.com/slackapi/slack-github-action
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::warning::API health check failed — wire up Slack/Teams notification here."
+          echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

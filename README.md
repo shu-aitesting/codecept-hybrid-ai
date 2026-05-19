@@ -29,7 +29,7 @@ ENV=dev npm test
 
 > **Lần đầu chạy E2E** mà chưa có app: xem phần [Chạy với demo app](#chạy-với-demo-app) bên dưới.
 
-> **Trạng thái** (verified 2026-05-10): typecheck pass, 249 unit tests pass, lint clean (1 warning).
+> **Trạng thái** (verified 2026-05-19): typecheck pass, 619 unit tests pass, lint clean.
 
 ---
 
@@ -80,9 +80,9 @@ codecept-hybrid/
 │   ├── api/smoke/              # @smoke @api — health checks
 │   ├── api/regression/         # @api — find, funds, tableware, user-crud
 │   ├── visual/                 # @visual — screenshot comparison
-│   └── unit/ai/                # Vitest unit tests — 21 files / 249 tests cho toàn bộ AI module
+│   └── unit/ai/                # Vitest unit tests — 40 files / 619 tests cho toàn bộ AI module
 ├── scripts/
-│   ├── gen.ts                  # CLI: gen page | gen api | gen scenario | gen swagger
+│   ├── gen.ts                  # CLI: gen page | gen curl | gen swagger | gen scenario | gen api (legacy)
 │   ├── heal-report.ts          # HTML dashboard từ heal-events.jsonl
 │   ├── codegen-report.ts       # LLM cost breakdown report
 │   └── update-baselines.ts     # Cập nhật visual baselines
@@ -112,6 +112,9 @@ codecept-hybrid/
 | `npm run test:smoke` | `codeceptjs run --grep @smoke` | Chỉ smoke tests |
 | `npm run test:ui` | `codeceptjs run --grep @ui` | Chỉ UI tests |
 | `npm run test:api` | `codeceptjs run --grep @api` | Chỉ API tests |
+| `npm run test:api:daily` | `codeceptjs run --grep @api` | **Daily health check** — full API suite |
+| `npm run test:api:smoke` | `codeceptjs run --grep @smoke` | API smoke — quick PR gate |
+| `npm run test:api:negative` | `codeceptjs run --grep @negative-` | Debug error paths |
 | `npm run test:visual` | `codeceptjs run --grep @visual` | Chỉ visual tests |
 | `npm run test:unit` | `vitest run` | Unit tests (không cần browser) |
 | `npm run test:unit:watch` | `vitest` | Unit tests watch mode |
@@ -123,10 +126,11 @@ codecept-hybrid/
 |---|---|
 | `npm run test:ui:ai` | Bật `AI_HEAL_ENABLED=true`, chạy UI tests với self-healing |
 | `npm run heal:report` | Generate HTML dashboard từ `output/heal-events.jsonl` |
-| `npm run gen:page -- --url <URL> --name <Name>` | Generate Fragments + Page + Steps + Test từ URL |
-| `npm run gen:api -- --curl '<curl>' --name <Name>` | Generate Service + Test từ cURL |
-| `npm run gen:swagger -- --spec <URL\|file> --name <Name>` | Generate Service Objects + Tests từ OpenAPI/Swagger spec |
-| `npm run gen:scenario -- --story '<user story>' --name <Name>` | Generate CodeceptJS test + Step Object từ user story |
+| `npm run gen:page -- --url <URL> --page-name <Name>` | Generate Fragments + Page + Steps + Test từ URL |
+| `npm run gen:curl -- --input <file.curl> --service-name <Name>` | Generate Service + Test từ cURL (khuyên dùng) |
+| `npm run gen:swagger -- --input <URL\|file>` | Generate Service Objects + Tests từ toàn bộ Swagger spec |
+| `npm run gen:scenario -- --story '<user story>' --feature-name <Name>` | Generate CodeceptJS test + Step Object từ user story |
+| `npm run gen:api -- --curl-file <file> --service-name <Name>` | Generate Service + Test từ cURL (legacy alias của `gen:curl`) |
 | `npm run codegen:report` | LLM cost breakdown (provider, tokens, $$$) |
 
 ### Reporting
@@ -203,6 +207,8 @@ Push/PR → GitHub webhook → Jenkins build
 
 Nightly regression: tự động 2am UTC (cấu hình trong `Jenkinsfile`).
 
+**API Daily Health Check** — GitHub Actions `.github/workflows/api-daily-health.yml` chạy `npm run test:api:daily` lúc 2am UTC mỗi ngày. Upload Allure kết quả 14 ngày. Tham khảo [docs/AI_CODEGEN.md](docs/AI_CODEGEN.md) để biết thêm.
+
 ---
 
 ## Xem thêm
@@ -210,6 +216,6 @@ Nightly regression: tự động 2am UTC (cấu hình trong `Jenkinsfile`).
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Hybrid pattern, AI flows, Mermaid diagrams
 - [docs/ONBOARDING.md](docs/ONBOARDING.md) — Kế hoạch 1 tuần cho QA mới
 - [docs/AI_FEATURES.md](docs/AI_FEATURES.md) — Self-healing, code generation, cost control
-- [docs/AI_CODEGEN.md](docs/AI_CODEGEN.md) — CLI reference đầy đủ cho gen:page / gen:api / gen:scenario
+- [docs/AI_CODEGEN.md](docs/AI_CODEGEN.md) — CLI reference đầy đủ cho gen:page / gen:curl / gen:swagger / gen:scenario, daily health check
 - [docs/JENKINS_SETUP.md](docs/JENKINS_SETUP.md) — Setup Jenkins: plugins, credentials, webhook
 - [config/ai/AGENT_VALIDATION_CHECKLIST.md](config/ai/AGENT_VALIDATION_CHECKLIST.md) — Checklist quality gate cho mọi Fragment/Page/Steps/Service

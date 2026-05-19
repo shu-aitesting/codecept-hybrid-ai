@@ -1,6 +1,6 @@
 ﻿# Implementation Plan — Swagger & cURL → API Test Generator Refactor
 
-> **Status**: PR-1 ✓ | PR-2 ✓ | PR-3 ✓ | PR-3.5 ✓ | PR-4 ✓ — PR-5 through PR-8 pending
+> **Status**: PR-1 ✓ | PR-2 ✓ | PR-3 ✓ | PR-3.5 ✓ | PR-4 ✓ | PR-5 ✓ | PR-6 ✓ | PR-7 ✓ | PR-8 ✓
 > **Branch**: `Refactor-Swagger-AI-Agent`
 > **Goal**: Sinh ra một bộ API test script comprehensive từ Swagger/cURL. Bộ test khi chạy daily chính là **system health check**.
 
@@ -627,29 +627,29 @@ npm test -- --testPathPattern="codegen/SwaggerToApiAgent|codegen/CurlToApiAgent"
 
 ### Tasks
 
-- [ ] **8.1** Thêm rules vào `ApiPostValidator.ts::checkServiceRules`:
+- [x] **8.1** Thêm rules vào `ApiPostValidator.ts::checkServiceRules`:
   - Cấm emit `.header('Token'|'Lng'|'Tz'|'Authorization'|'Accept-Language'|'X-Timezone'|'Content-Type', ...)` (case-insensitive regex; allow `Content-Type` nếu pair với non-JSON body — skip rule cho an toàn)
-- [ ] **8.2** Thêm rules vào `ApiPostValidator.ts::checkTestRules`:
+- [x] **8.2** Thêm rules vào `ApiPostValidator.ts::checkTestRules`:
   - Mọi `expectSchema(X)` argument phải là identifier (không phải inline object literal); identifier phải xuất hiện trong service file cùng group (regex check chéo, nhận 2 string args)
   - `@negative-auth-*` Scenario phải có `init({ skipAmbient: ['token'] })` hoặc `init({ headerOverrides:..., extraHTTPHeaders:{...} })` (tên header lấy từ `endpoint.auth.headerName`, không hardcode `Token`/`Authorization`)
   - **Cấm raw `${...}` literal** trong payload/path string — phải qua `dataCtx.resolve()` hoặc `dataCtx.get()` (tránh leak template chưa resolve vào output)
   - Cập nhật signature `checkTestRules` để optional nhận `serviceTs` cho cross-file check
-- [ ] **8.3** Cập nhật `scripts/gen.ts`:
+- [x] **8.3** Cập nhật `scripts/gen.ts`:
   - Flags chung: `--exclude <glob>`, `--required-headers <list>`, `--auth-negative-cases <missing|invalid|both>`, `--seed <n>` (data generation seed; default = hash(input)), `--include-optional` (DataFactory opt), `--no-llm` (skip enricher, dùng auto-title), `--dry-data` (in payload stdout, không write file)
   - `gen:curl`: thêm `--with-response <path>`, `--expected-status <code>`, `--path-template <pattern>`
   - Parse và truyền vào agent constructor opts
-- [ ] **8.4** Cập nhật `package.json` scripts:
+- [x] **8.4** Cập nhật `package.json` scripts:
   ```json
   "test:api:daily": "codeceptjs run --grep @api",
   "test:api:smoke": "codeceptjs run --grep @smoke",
   "test:api:negative": "codeceptjs run --grep '@negative-'"
   ```
   Xóa script cũ `test:api:smoke` nếu trùng (giữ một)
-- [ ] **8.5** Cập nhật [codecept.conf.ts](../codecept.conf.ts) (nếu cần): thêm `retry: { Scenario: 2 }` cho `tests/api/**`
-- [ ] **8.6** Tạo `.github/workflows/api-daily-health.yml`:
+- [x] **8.5** Cập nhật [codecept.conf.ts](../codecept.conf.ts) (nếu cần): thêm `retry: { Scenario: 2 }` cho `tests/api/**`
+- [x] **8.6** Tạo `.github/workflows/api-daily-health.yml`:
   - Trigger: `schedule: cron: '0 2 * * *'` (2AM UTC daily) + `workflow_dispatch`
   - Steps: checkout, setup-node, npm ci, `npm run test:api:daily`, upload allure results, post failure summary to Slack/Teams (placeholder)
-- [ ] **8.7** Rewrite [docs/AI_CODEGEN.md](AI_CODEGEN.md):
+- [x] **8.7** Rewrite [docs/AI_CODEGEN.md](AI_CODEGEN.md):
   - Section "Architecture" — hybrid codegen + shared core
   - Section "Test taxonomy" — tag scheme + matrix
   - Section "Generating tests from Swagger" — CLI usage + flags
@@ -658,23 +658,9 @@ npm test -- --testPathPattern="codegen/SwaggerToApiAgent|codegen/CurlToApiAgent"
   - Section "Adding a new test type" — extension points (PlannerStrategy, template)
   - **Section "Test data layer"** — `json-schema-faker` integration, `x-depends-on` Swagger extension chain example, seed override cho debug
   - **Section "Ambient headers configuration"** — bảng so sánh 3 ecosystem (default `Token` raw / `Authorization: Bearer` / custom `X-API-Key`); cách switch qua env vars; precedence chain 4 tầng; ghi rõ Lng/Tz là **optional emit** (chỉ khi config có value)
-- [ ] **8.8** Cập nhật `.env.dev.example`:
-  ```bash
-  # === Default ecosystem (Token raw, no Bearer) ===
-  API_TOKEN=
-  API_LANGUAGE=vi-VN
-  API_TIMEZONE=Asia/Ho_Chi_Minh
-  # API_HEADER_TOKEN=Token              # default
-  # API_HEADER_TOKEN_PREFIX=             # default empty (raw)
-  # API_HEADER_LANGUAGE=Lng              # default
-  # API_HEADER_TIMEZONE=Tz               # default
-
-  # === Switch to Bearer auth (uncomment khi cần) ===
-  # API_HEADER_TOKEN=Authorization
-  # API_HEADER_TOKEN_PREFIX=Bearer 
-  ```
-- [ ] **8.9** Cleanup: đánh dấu deprecated `GoldenExampleLoader` (template không cần golden nữa); plan xóa ở phase tiếp theo
-- [ ] **8.10** Run đầy đủ verification
+- [x] **8.8** Cập nhật `.env.example`:
+- [x] **8.9** Cleanup: đánh dấu deprecated `GoldenExampleLoader` (template không cần golden nữa); plan xóa ở phase tiếp theo
+- [x] **8.10** Run đầy đủ verification
 
 ### Verify
 ```bash

@@ -53,6 +53,9 @@ A single failure = regenerate. These rules encode lessons from the 2026-04-30 fr
 - [ ] **No browser-fingerprint headers** — strip `sec-ch-ua*`, `sec-fetch-*`, `user-agent`, `priority`
 - [ ] **RestRequestBuilder shorthand** — `.post(url)` / `.get(url)` / etc. NOT `.url().method(RestMethod.*)`
 - [ ] **`.json()` for JSON bodies** — NOT `.body()`
+- [ ] **No ambient headers via `.header()`** — NEVER emit `Token`, `Lng`, `Tz`, `Authorization`, `Accept-Language`, `X-Timezone` via `.header()`; `RestClient.init()` injects them automatically from config
+- [ ] **No `Content-Type` via `.header()`** — `RestRequestBuilder.json()` sets it automatically for JSON bodies
+- [ ] **Response schema exported** — for each endpoint with a 2xx response schema, export `const {OPERATION_UPPER}_RESPONSE_SCHEMA = … as const;`
 
 ---
 
@@ -63,7 +66,11 @@ A single failure = regenerate. These rules encode lessons from the 2026-04-30 fr
 - [ ] **Lifecycle** — `let client`, `let svc` at module scope; `Before: client.init()` before passing to service; `After: client.dispose()`
 - [ ] **Assertions** — `res.expectStatus(code)` only
 - [ ] **Tags chained** — `.tag('@smoke')` / `.tag('@negative')` after callback, not in title
-- [ ] **File location** — `tests/api/smoke/`
+- [ ] **Feature tagged `@api`** — `Feature('…').tag('@api').tag('@regression')`
+- [ ] **File location** — `tests/api/smoke/` or `tests/api/regression/`
+- [ ] **`expectSchema()` uses identifier** — NOT inline object literal; identifier must match a `*_RESPONSE_SCHEMA` const exported from the service file
+- [ ] **`@negative-auth-*` uses `init()` overrides** — must call `client.init({ skipAmbient: ['token'] })` or `client.init({ headerOverrides: …, extraHTTPHeaders: … })`; bare `.header()` calls do NOT test the ambient injection path
+- [ ] **No raw `${…}` in svc call args** — template expressions must go through `dataCtx.resolve()` or `dataCtx.get()`; unresolved placeholders leak into test output
 
 ---
 

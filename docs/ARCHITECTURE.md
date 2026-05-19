@@ -222,7 +222,101 @@ Xem [config/ai/AGENT_VALIDATION_CHECKLIST.md](../config/ai/AGENT_VALIDATION_CHEC
 
 ---
 
-## 7. Hooks Lifecycle
+## 7. Hybrid API Codegen Pipeline (PR-5 → PR-8)
+
+Swagger / cURL input chạy qua pipeline **hybrid**: deterministic rendering + narrow LLM enrichment chỉ ở bước title.
+
+```
+Input (Swagger spec | cURL string)
+        ↓
+EndpointModel[]         ← unified internal type (method, path, params, body schema, auth)
+        ↓
+TestCasePlanner         ← deterministic test plan (positive + negative cases per endpoint)
+  ├── SwaggerNegativeStrategy  (missing-required, type-mismatch, boundary per JSON Schema)
+  └── CurlNegativeStrategy     (status variants từ --expected-status flag)
+        ↓
+DataFactory             ← json-schema-faker (seed-deterministic) → payload objects
+        ↓
+ScenarioEnricher        ← LLM title-only call (<12 words) hoặc auto-title (--no-llm)
+        ↓
+ServiceTemplate         ← deterministic render → *Service.ts
+TestTemplate            ← deterministic render → *.test.ts
+        ↓
+ApiPostValidator        ← regex rules + tsc --noEmit
+  ├── checkServiceRules: no ambient headers, no Content-Type via .header()
+  └── checkTestRules:    expectSchema identifier, @negative-auth-* uses init() overrides
+        ↓
+Write files to disk
+```
+
+### Tại sao hybrid thay vì LLM toàn phần?
+
+| | LLM thuần (cũ) | Hybrid (mới) |
+|---|---|---|
+| Cấu trúc file | LLM tự phát minh | Deterministic 100% |
+| Tên trường/method | Sáng tạo tự do → sai checklist | Template cố định |
+| Payload data | LLM "bịa" | json-schema-faker + seed |
+| Tiêu đề scenario | LLM (hợp lý) | LLM title-only / auto |
+| Token cost per endpoint | ~8 000 tok | ~300 tok (title only) |
+| ApiPostValidator pass rate | ~60% | ~98% |
+
+### EndpointModel
+
+Unified internal type — cả SwaggerToApiAgent lẫn CurlToApiAgent đều output `EndpointModel[]` trước khi đến TestCasePlanner:
+
+```typescript
+interface EndpointModel {
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  path: string;                    // relative: '/api/GiftList/Find'
+  operationId: string;             // PascalCase → class/method names
+  summary?: string;
+  requestBodySchema?: JSONSchema;  // Swagger requestBody hoặc infer từ cURL body
+  responseSchema?: JSONSchema;     // Swagger 200/201 response
+  pathParams: ParamModel[];
+  queryParams: ParamModel[];
+  auth?: { required: boolean; headerName?: string };
+  tags: string[];
+}
+```
+
+### DataFactory
+
+`DataFactory` dùng `json-schema-faker` với seed cố định để tạo payloads **lặp lại được**:
+
+- **Positive**: `DataFactory.generate(schema, { seed: 42 })` → valid object
+- **Negative mutation strategies**: `missing-required` | `wrong-type` | `boundary-min` | `boundary-max` | `null-value`
+
+```typescript
+const badPayload = DataFactory.mutate(payload, { strategy: 'missing-required', field: 'name' });
+```
+
+### ScenarioEnricher
+
+LLM call chỉ sinh **title** cho mỗi test case (< 12 words, tiếng Anh). Toàn bộ cấu trúc, assertion, lifecycle không liên quan đến LLM:
+
+```
+Input:  { method: 'POST', path: '/api/GiftList/Find', testType: 'missing-required', field: 'name' }
+Output: "Find gift list with missing name returns 400"
+```
+
+`--no-llm` flag → auto-title từ template `"POST /api/GiftList/Find — missing name → 400"`. Không tốn token.
+
+### ApiPostValidator — PR-8 additions
+
+Validator chạy sau render, trước khi ghi file:
+
+| Rule | Mô tả |
+|---|---|
+| No ambient `.header()` | Service không emit `.header('Token'…)` / `.header('Authorization'…)` / `.header('Lng'…)` / `.header('Tz'…)` — `RestClient.init()` inject tự động |
+| No Content-Type | `.header('Content-Type'…)` bị cấm — `.json()` set tự động |
+| `expectSchema` identifier | `expectSchema(INLINE_OBJECT)` bị cấm — phải dùng `expectSchema(IDENTIFIER)` |
+| Cross-file identifier | Identifier trong test phải export từ service file |
+| `@negative-auth-*` init | Phải dùng `client.init({ skipAmbient: … })` — không phải bare `.header()` |
+| No raw `${…}` in svc args | Template literals trong svc call args phải đi qua `dataCtx.resolve()` |
+
+---
+
+## 8. Hooks Lifecycle
 
 ```
 ┌─ Before suite ──────────────────────────────────────┐
@@ -257,7 +351,7 @@ Xem [config/ai/AGENT_VALIDATION_CHECKLIST.md](../config/ai/AGENT_VALIDATION_CHEC
 
 ---
 
-## 8. Configuration — Merge Strategy
+## 9. Configuration — Merge Strategy
 
 ```
 .env.dev / .env.staging / .env.prod
@@ -277,7 +371,7 @@ codecept.conf.ts  →  helpers.Playwright.url / browser / headless
 
 ---
 
-## 9. Path Aliases (TypeScript)
+## 10. Path Aliases (TypeScript)
 
 | Alias | Giải thích | Ví dụ |
 |---|---|---|
