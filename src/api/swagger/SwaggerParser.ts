@@ -54,6 +54,8 @@ export interface SwaggerEndpoint {
   responses: SwaggerResponseSchema[];
   security?: Array<Record<string, string[]>>;
   deprecated: boolean;
+  /** True when the endpoint requires multipart/form-data or binary file upload. */
+  isFileUpload: boolean;
 }
 
 export interface SwaggerGroup {
@@ -167,6 +169,22 @@ export class SwaggerParser {
             ? op['operationId']
             : SwaggerParser.generateOperationId(httpMethod, urlPath);
 
+        // Detect file-upload endpoints:
+        // - OAS3: requestBody content contains multipart/form-data
+        // - Swagger 2: any param with in:formData and type:file or format:binary
+        const isFileUpload = isOas3
+          ? Object.keys(
+              ((op['requestBody'] as Record<string, unknown> | undefined)?.['content'] ??
+                {}) as Record<string, unknown>,
+            ).some((ct) => ct.includes('multipart') || ct.includes('octet-stream'))
+          : ((op['parameters'] as unknown[] | undefined) ?? []).some((p) => {
+              const param = p as Record<string, unknown>;
+              return (
+                param['in'] === 'formData' &&
+                (param['type'] === 'file' || param['format'] === 'binary')
+              );
+            });
+
         endpoints.push({
           operationId,
           method,
@@ -183,6 +201,7 @@ export class SwaggerParser {
             ? (op['security'] as Array<Record<string, string[]>>)
             : undefined,
           deprecated: op['deprecated'] === true,
+          isFileUpload,
         });
       }
     }

@@ -31,6 +31,7 @@ function makeEndpoint(overrides: Partial<EndpointModel> = {}): EndpointModel {
     fieldExamples: {},
     bodyExamples: [],
     deprecated: false,
+    isFileUpload: false,
     source: 'swagger',
     tags: [],
     ...overrides,

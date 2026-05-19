@@ -147,6 +147,7 @@ export function swaggerToModel(
       bodyExamples,
       xDependsOn,
       deprecated: ep.deprecated,
+      isFileUpload: ep.isFileUpload,
       source: 'swagger',
       summary: ep.summary,
       tags: ep.tags,

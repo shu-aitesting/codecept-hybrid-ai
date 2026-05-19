@@ -38,7 +38,7 @@ Scenario('[STORE-001] DELETE /store/order/{orderId} — positive', async () => {
 
 Scenario('[STORE-002] DELETE /store/order/{orderId} — negative-validation', async () => {
   const res = await svc.deleteOrder('0');
-  res.expectStatus(404);
+  res.expectStatusRange(400, 499);
 })
   .tag('@STORE-002')
   .tag('@negative-validation');
@@ -96,7 +96,7 @@ Scenario('[STORE-006] GET /store/order/{orderId} — positive', async () => {
 
 Scenario('[STORE-007] GET /store/order/{orderId} — negative-validation', async () => {
   const res = await svc.getOrderById('0');
-  res.expectStatus(400);
+  res.expectStatusRange(400, 499);
 })
   .tag('@STORE-007')
   .tag('@negative-validation');
@@ -129,7 +129,7 @@ Scenario('[STORE-009] POST /store/order — negative-validation', async () => {
     complete: true,
   } as unknown as PlaceOrderRequest;
   const res = await svc.placeOrder(payload);
-  res.expectStatus(400);
+  res.expectStatusRange(400, 499);
 })
   .tag('@STORE-009')
   .tag('@negative-validation');

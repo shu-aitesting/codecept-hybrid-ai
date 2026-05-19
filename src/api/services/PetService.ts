@@ -7,22 +7,6 @@ const PET_ENDPOINT = '/pet';
 const PET_FINDBYSTATUS_ENDPOINT = '/pet/findByStatus';
 const PET_FINDBYTAGS_ENDPOINT = '/pet/findByTags';
 
-export const UPLOAD_FILE_RESPONSE_SCHEMA = {
-  type: 'object',
-  properties: {
-    code: {
-      type: 'integer',
-      format: 'int32',
-    },
-    type: {
-      type: 'string',
-    },
-    message: {
-      type: 'string',
-    },
-  },
-} as const;
-
 export const FIND_PETS_BY_STATUS_RESPONSE_SCHEMA = {
   type: 'array',
   items: {
@@ -242,12 +226,6 @@ export const GET_PET_BY_ID_RESPONSE_SCHEMA = {
   },
 } as const;
 
-export interface UploadFileResponse {
-  code?: number;
-  type?: string;
-  message?: string;
-}
-
 export interface AddPetRequest {
   id?: number;
   category?: Record<string, unknown>;
@@ -281,13 +259,6 @@ export interface GetPetByIdResponse {
 
 export class PetService {
   constructor(private readonly client: RestClient) {}
-
-  async uploadFile(petId: string) {
-    const req = new RestRequestBuilder()
-      .post(`${config.apiUrl}${PET_ENDPOINT}/${petId}/uploadImage`)
-      .build();
-    return this.client.send(req);
-  }
 
   async addPet(body: AddPetRequest) {
     const req = new RestRequestBuilder().post(`${config.apiUrl}${PET_ENDPOINT}`).json(body).build();

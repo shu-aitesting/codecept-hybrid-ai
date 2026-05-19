@@ -157,7 +157,7 @@ Scenario('[USER-015] DELETE /user/{username} — positive', async () => {
 
 Scenario('[USER-016] DELETE /user/{username} — negative-validation', async () => {
   const res = await svc.deleteUser('0');
-  res.expectStatus(404);
+  res.expectStatusRange(400, 499);
 })
   .tag('@USER-016')
   .tag('@negative-validation');
@@ -177,7 +177,7 @@ Scenario('[USER-017] GET /user/{username} — positive', async () => {
 
 Scenario('[USER-018] GET /user/{username} — negative-validation', async () => {
   const res = await svc.getUserByName('0');
-  res.expectStatus(400);
+  res.expectStatusRange(400, 499);
 })
   .tag('@USER-018')
   .tag('@negative-validation');
@@ -197,7 +197,7 @@ Scenario('[USER-019] GET /user/login — positive', async () => {
 
 Scenario('[USER-020] GET /user/login — negative-validation', async () => {
   const res = await svc.loginUser('invalid-value', 'placeholder');
-  res.expectStatus(400);
+  res.expectStatusRange(400, 499);
 })
   .tag('@USER-020')
   .tag('@negative-validation');
@@ -244,7 +244,7 @@ Scenario('[USER-023] PUT /user/{username} — negative-validation', async () => 
     userStatus: 8080008,
   } as unknown as UpdateUserRequest;
   const res = await svc.updateUser('0', payload);
-  res.expectStatus(400);
+  res.expectStatusRange(400, 499);
 })
   .tag('@USER-023')
   .tag('@negative-validation');

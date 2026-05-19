@@ -25,6 +25,7 @@ function makeEndpoint(schema?: Record<string, unknown>): EndpointModel {
     fieldExamples: {},
     bodyExamples: [],
     deprecated: false,
+    isFileUpload: false,
     source: 'swagger',
     tags: [],
   } as EndpointModel;

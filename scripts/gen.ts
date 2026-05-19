@@ -339,6 +339,10 @@ program
   .option('--seed <n>', 'Fixed integer seed for DataFactory (default: hash of input)')
   .option('--include-optional', 'Include optional fields in generated payloads')
   .option('--no-llm', 'Skip ScenarioEnricher LLM call; use deterministic auto-titles')
+  .option(
+    '--flexible-status',
+    'negative-validation scenarios accept any 4xx status instead of the exact code from spec',
+  )
   .option('--dry-data', 'Print generated payloads to stdout and exit without writing files')
   .action(async (opts: Record<string, string | boolean>) => {
     const input = opts['input'] as string | undefined;
@@ -393,6 +397,7 @@ program
       seed: seedRaw !== undefined ? Number(seedRaw) : undefined,
       includeOptional: !!opts['includeOptional'],
       noLlm: opts['llm'] === false,
+      flexibleStatus: !!opts['flexibleStatus'],
     };
 
     const dryData = !!opts['dryData'];

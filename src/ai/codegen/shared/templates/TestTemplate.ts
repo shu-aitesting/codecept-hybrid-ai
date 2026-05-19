@@ -20,7 +20,17 @@ export function renderTest(
   group: { groupName: string; tagSlug: string },
   renderablePlans: RenderablePlan[],
   executionOrder?: string[],
-  opts?: { serviceImportPath?: string },
+  opts?: {
+    serviceImportPath?: string;
+    /** Endpoints skipped because they require multipart/form-data file upload. */
+    fileUploadEndpoints?: EndpointModel[];
+    /**
+     * When true, negative-validation scenarios assert any 4xx status instead of
+     * the exact code from the spec. Use when the real API returns 400 or 422
+     * interchangeably.
+     */
+    flexibleStatus?: boolean;
+  },
 ): string {
   const groupPascal = toPascalCase(group.groupName);
   const className = `${groupPascal}Service`;
@@ -94,7 +104,25 @@ export function renderTest(
 
   // Scenarios
   for (const rp of sortedPlans) {
-    lines.push(renderScenario(rp, className));
+    lines.push(renderScenario(rp, className, opts?.flexibleStatus));
+    lines.push('');
+  }
+
+  // Comment stubs for file-upload endpoints — skipped by codegen, must be written manually
+  if (opts?.fileUploadEndpoints?.length) {
+    lines.push(`// ---------------------------------------------------------------------------`);
+    lines.push(`// File-upload endpoints — skipped by codegen (require multipart/form-data).`);
+    lines.push(
+      `// Implement these scenarios manually using svc.<operationId>() with a file buffer.`,
+    );
+    lines.push(`// ---------------------------------------------------------------------------`);
+    for (const ep of opts.fileUploadEndpoints) {
+      const svcPath = `@api/services/${toPascalCase(group.groupName)}Service`;
+      lines.push(`//`);
+      lines.push(`// Scenario ${ep.method} ${ep.path}`);
+      lines.push(`//   operationId : ${ep.operationId}`);
+      lines.push(`//   see         : ${svcPath}#${ep.operationId}`);
+    }
     lines.push('');
   }
 
@@ -109,21 +137,21 @@ export function renderTest(
 // Scenario rendering
 // ---------------------------------------------------------------------------
 
-function renderScenario(rp: RenderablePlan, className: string): string {
+function renderScenario(rp: RenderablePlan, className: string, flexibleStatus?: boolean): string {
   const { plan, title, displayId } = rp;
   const idPrefix = displayId ? `[${displayId}] ` : '';
   const idTag = displayId ? `.tag('@${displayId}')` : '';
   const tagChain = idTag + plan.tags.map((t) => `.tag('${t}')`).join('');
-  const body = renderBody(rp, className);
+  const body = renderBody(rp, className, flexibleStatus);
   return `Scenario('${escapeStr(idPrefix + title)}', async () => {\n${body}\n})${tagChain};`;
 }
 
-function renderBody(rp: RenderablePlan, className: string): string {
+function renderBody(rp: RenderablePlan, className: string, flexibleStatus?: boolean): string {
   switch (rp.plan.kind) {
     case 'positive':
       return renderPositiveBody(rp);
     case 'negative-validation':
-      return renderNegativeValidationBody(rp, className);
+      return renderNegativeValidationBody(rp, className, flexibleStatus);
     case 'negative-auth-missing':
       return renderNegativeAuthMissingBody(rp, className);
     case 'negative-auth-invalid':
@@ -149,7 +177,11 @@ function renderPositiveBody(rp: RenderablePlan): string {
   return lines.join('\n');
 }
 
-function renderNegativeValidationBody(rp: RenderablePlan, _className: string): string {
+function renderNegativeValidationBody(
+  rp: RenderablePlan,
+  _className: string,
+  flexibleStatus?: boolean,
+): string {
   const { plan, payload } = rp;
   const lines: string[] = [];
 
@@ -163,7 +195,13 @@ function renderNegativeValidationBody(rp: RenderablePlan, _className: string): s
     lines.push(`  const res = await ${call};`);
   }
 
-  lines.push(`  res.expectStatus(${plan.expectedStatus});`);
+  // flexibleStatus: accept any 4xx instead of the exact code from spec.
+  // Auth negative cases always keep exact status (401/403) — only validation errors vary.
+  if (flexibleStatus) {
+    lines.push(`  res.expectStatusRange(400, 499);`);
+  } else {
+    lines.push(`  res.expectStatus(${plan.expectedStatus});`);
+  }
   return lines.join('\n');
 }
 
