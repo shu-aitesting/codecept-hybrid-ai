@@ -56,19 +56,79 @@ export function checkServiceRules(serviceTs: string): string[] {
     );
   }
 
+  // Ban explicit emit of ambient headers — RestClient.init() injects them automatically.
+  if (
+    /\.header\s*\(\s*['"`](?:Token|Lng|Tz|Authorization|Accept-Language|X-Timezone)['"`]/i.test(
+      serviceTs,
+    )
+  ) {
+    errors.push(
+      'Service must NOT emit ambient headers (Token, Lng, Tz, Authorization, Accept-Language, ' +
+        'X-Timezone) via .header() — RestClient.init() injects them automatically from config.',
+    );
+  }
+
+  // Ban Content-Type header — .json() sets it automatically for JSON bodies.
+  if (/\.header\s*\(\s*['"`]Content-Type['"`]/i.test(serviceTs)) {
+    errors.push(
+      'Service must NOT emit Content-Type header via .header() — ' +
+        'RestRequestBuilder.json() sets it automatically for JSON bodies.',
+    );
+  }
+
   return errors;
 }
 
 // ─── Test checklist rules ─────────────────────────────────────────────────────
 
+function checkExpectSchemaRules(
+  testTs: string,
+  serviceTs: string | undefined,
+  errors: string[],
+): void {
+  if (/\.expectSchema\s*\(\s*\{/.test(testTs)) {
+    errors.push(
+      'expectSchema() must receive an identifier (e.g. USER_RESPONSE_SCHEMA) — ' +
+        'not an inline object literal. Export the schema const from the service file.',
+    );
+  }
+  if (!serviceTs) return;
+  for (const m of testTs.matchAll(/\.expectSchema\s*\(\s*(\w+)\s*\)/g)) {
+    const identifier = m[1] ?? '';
+    if (identifier && !serviceTs.includes(identifier)) {
+      errors.push(
+        `expectSchema() references '${identifier}' which is not exported by the service file. ` +
+          'Add a matching *_RESPONSE_SCHEMA const to the service.',
+      );
+    }
+  }
+}
+
+function checkNegativeAuthRules(testTs: string, errors: string[]): void {
+  const blocks = testTs.match(/Scenario\s*\([^)]*\)[\s\S]*?(?=Scenario\s*\(|$)/g);
+  if (!blocks) return;
+  for (const block of blocks) {
+    if (
+      /\.tag\s*\(\s*['"`]@negative-auth-/.test(block) &&
+      !/init\s*\(\s*\{[\s\S]*?(?:skipAmbient|headerOverrides)/.test(block)
+    ) {
+      errors.push(
+        '@negative-auth-* Scenario must call client.init() with skipAmbient or headerOverrides ' +
+          'to alter the token header — bare client calls will not test missing/invalid auth.',
+      );
+      return;
+    }
+  }
+}
+
 /**
  * Validates a generated Test file against the API Test Checklist.
  * Returns an array of human-readable error strings; empty = pass.
+ * Pass `serviceTs` to enable cross-file checks (e.g. expectSchema identifier resolution).
  */
-export function checkTestRules(testTs: string): string[] {
+export function checkTestRules(testTs: string, serviceTs?: string): string[] {
   const errors: string[] = [];
 
-  // No RestRequestBuilder import in test
   if (/import.*RestRequestBuilder/.test(testTs)) {
     errors.push(
       'Test must NOT import RestRequestBuilder. ' +
@@ -76,14 +136,12 @@ export function checkTestRules(testTs: string): string[] {
     );
   }
 
-  // Assertions via expectStatus, not Jest/Chai patterns
   if (/expect\s*\(.*\)\.toBe\s*\(/.test(testTs) || /I\.assertEqual\s*\(/.test(testTs)) {
     errors.push(
       'Test assertions must use res.expectStatus(code) — NOT expect().toBe() or I.assertEqual().',
     );
   }
 
-  // Lifecycle: Before + After required
   if (!testTs.includes('Before(')) {
     errors.push(
       'Test must have a Before() hook that calls client.init() and instantiates the service.',
@@ -93,18 +151,26 @@ export function checkTestRules(testTs: string): string[] {
     errors.push('Test must have an After() hook that calls client.dispose().');
   }
 
-  // Feature-level @api tag
   if (!testTs.includes("tag('@api')") && !testTs.includes('tag("@api")')) {
     errors.push("Test Feature must be tagged with .tag('@api').");
   }
 
-  // Detect tags embedded inside Scenario title strings (antipattern).
-  // This regex looks for @smoke/@health/@negative/@deprecated inside the quoted first
-  // argument of Scenario(), which is the title — not in a chained .tag() call.
+  // Tags must be chained via .tag(), not embedded in the Scenario title string.
   if (/Scenario\s*\(\s*['"][^'"]*@(?:smoke|health|negative|deprecated)/.test(testTs)) {
     errors.push(
       'Scenario tags (@smoke, @health, @negative, @deprecated) must be chained via ' +
         ".tag('@smoke') after the callback — not embedded in the scenario title string.",
+    );
+  }
+
+  checkExpectSchemaRules(testTs, serviceTs, errors);
+  checkNegativeAuthRules(testTs, errors);
+
+  // Ban unresolved ${...} template literals in svc call arguments.
+  if (/svc\.\w+\s*\([^)]*\$\{(?!dataCtx\.)/.test(testTs)) {
+    errors.push(
+      'Raw ${...} template expressions in service call arguments must go through ' +
+        'dataCtx.resolve() or dataCtx.get() — unresolved templates leak placeholder strings.',
     );
   }
 
@@ -215,7 +281,10 @@ export function createApiPostValidate(
 ): (files: ApiFiles) => Promise<string[]> {
   return async (files: ApiFiles) => {
     // Phase 1: regex checklist — fast, no subprocess
-    const regexErrors = [...checkServiceRules(files.serviceTs), ...checkTestRules(files.testTs)];
+    const regexErrors = [
+      ...checkServiceRules(files.serviceTs),
+      ...checkTestRules(files.testTs, files.serviceTs),
+    ];
     if (regexErrors.length > 0) return regexErrors;
 
     // Phase 2: tsc — only if not suppressed

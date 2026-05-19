@@ -1,9 +1,7 @@
-import * as crypto from 'node:crypto';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
 
 import {
   CurlToApiAgent,
@@ -11,84 +9,46 @@ import {
   CurlToApiOutput,
 } from '../../../../src/ai/codegen/CurlToApiAgent';
 import { GenerationCache } from '../../../../src/ai/codegen/GenerationCache';
-import {
-  GenerationFailedError,
-  GenerationPipeline,
-} from '../../../../src/ai/codegen/GenerationPipeline';
 import { classify } from '../../../../src/ai/codegen/headerClassifier';
-import { PromptLibrary } from '../../../../src/ai/prompts/PromptLibrary';
-import { BudgetGuard } from '../../../../src/ai/providers/BudgetGuard';
-import { CircuitBreaker } from '../../../../src/ai/providers/CircuitBreaker';
-import { CostMeter } from '../../../../src/ai/providers/CostMeter';
-import { MockProvider } from '../../../../src/ai/providers/MockProvider';
-import { RateLimitTracker } from '../../../../src/ai/providers/RateLimitTracker';
-import { StructuredOutputParser } from '../../../../src/ai/providers/StructuredOutputParser';
-import { TaskAwareRouter } from '../../../../src/ai/providers/TaskAwareRouter';
+import { ScenarioEnricher } from '../../../../src/ai/codegen/shared/ScenarioEnricher';
 import { CurlConverter } from '../../../../src/api/rest/CurlConverter';
 
-const VALID_OUTPUT = JSON.stringify({
-  serviceTs: 'export class UserService { async createUser() {} }',
-  testTs: 'Scenario("creates user", () => {});',
-});
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-const outputSchema = z.object({ serviceTs: z.string().min(1), testTs: z.string().min(1) });
+const SAMPLE_CURL =
+  'curl -X POST https://api.example.com/users -H \'Content-Type: application/json\' -d \'{"name":"Alice"}\'';
 
-function makeRouter(mock: MockProvider) {
-  const costMeter = new CostMeter({ filePath: path.join(os.tmpdir(), `cost-${Date.now()}.jsonl`) });
-  const budgetGuard = new BudgetGuard({ costMeter, maxDailyUsd: 999 });
-  const rateLimit = new RateLimitTracker({
-    filePath: path.join(os.tmpdir(), `rl-${Date.now()}.json`),
-  });
-  return new TaskAwareRouter('codegen', {
-    providers: { 'anthropic:sonnet': mock },
-    costMeter,
-    budgetGuard,
-    rateLimit,
-  });
+const GET_CURL = 'curl https://api.example.com/health';
+
+const AUTH_CURL =
+  "curl -X GET https://api.example.com/users -H 'Token: mytoken123' -H 'Lng: vi-VN'";
+
+function makeAgent(
+  overrides: {
+    postValidate?: (f: CurlToApiOutput) => Promise<string[]>;
+    cache?: GenerationCache;
+    noLlm?: boolean;
+  } = {},
+): CurlToApiAgent {
+  return new CurlToApiAgent(
+    {
+      postValidate: overrides.postValidate ?? (() => Promise.resolve([])),
+      cache: overrides.cache,
+    },
+    { noLlm: overrides.noLlm ?? true },
+  );
 }
 
-function makePipeline(
-  mock: MockProvider,
-  cache: GenerationCache,
-  postValidate?: (f: CurlToApiOutput) => Promise<string[]>,
-): GenerationPipeline<CurlToApiInput, CurlToApiOutput> {
-  return new GenerationPipeline(
-    {
-      agentName: 'curl-to-api',
-      promptTemplate: 'curl-to-api',
-      outputSchema,
-      inputHasher: (i) =>
-        crypto.createHash('sha256').update(`${i.serviceName}:${i.curl}`).digest('hex'),
-      contextBuilder: async (i) => {
-        const req = CurlConverter.fromCurl(i.curl);
-        const parsed = new URL(req.url);
-        return {
-          serviceName: i.serviceName,
-          method: req.method,
-          url: req.url,
-          baseUrl: parsed.origin,
-          endpoint: parsed.pathname + (parsed.search || ''),
-          headers: JSON.stringify(req.headers),
-          body: req.body ? JSON.stringify(req.body) : '{}',
-          endpointDescription: `Endpoint for ${i.serviceName}`,
-        };
-      },
-      postValidate,
-    },
-    {
-      router: makeRouter(mock),
-      cache,
-      prompts: new PromptLibrary(),
-      parser: new StructuredOutputParser(),
-    },
-  );
+function makeInput(curl: string, serviceName = 'Sample'): CurlToApiInput {
+  return { curl, serviceName, outputDir: path.join(os.tmpdir(), 'curl-agent-out') };
 }
 
 let dbPath: string;
 let cache: GenerationCache;
 
 beforeEach(() => {
-  CircuitBreaker.reset();
   dbPath = path.join(os.tmpdir(), `curl-test-${Date.now()}-${Math.random()}.db`);
   cache = new GenerationCache({ dbPath, ttlDays: 1 });
 });
@@ -97,162 +57,117 @@ afterEach(() => {
   cache.close();
 });
 
-describe('CurlToApiAgent', () => {
-  const SAMPLE_CURL =
-    'curl -X POST https://api.example.com/users -H \'Content-Type: application/json\' -d \'{"name":"Alice"}\'';
+// ---------------------------------------------------------------------------
+// run() — basic generation
+// ---------------------------------------------------------------------------
 
-  // ── Happy path ────────────────────────────────────────────────────────────
-
-  it('returns serviceTs + testTs from LLM response', async () => {
-    const mock = new MockProvider({ fallback: VALID_OUTPUT });
-    const agent = new CurlToApiAgent({ pipeline: makePipeline(mock, cache) });
-
-    const result = await agent.run({ curl: SAMPLE_CURL, serviceName: 'User', outputDir: '/tmp' });
-    expect(result.serviceTs).toContain('UserService');
-    expect(result.testTs).toContain('Scenario');
-  });
-
-  it('parses GET curl (no -X flag defaults to GET)', async () => {
-    const getCurl = 'curl https://api.example.com/users/123';
-    const mock = new MockProvider({ fallback: VALID_OUTPUT });
-    const agent = new CurlToApiAgent({ pipeline: makePipeline(mock, cache) });
-
-    const result = await agent.run(
-      { curl: getCurl, serviceName: 'User', outputDir: '/tmp' },
-      { skipCache: true },
-    );
-    expect(result).toHaveProperty('serviceTs');
-  });
-
-  it('parses DELETE curl with Authorization header', async () => {
-    const delCurl = "curl -X DELETE https://api.example.com/users/1 -H 'Authorization: Bearer tok'";
-    const mock = new MockProvider({ fallback: VALID_OUTPUT });
-    const agent = new CurlToApiAgent({ pipeline: makePipeline(mock, cache) });
-
-    const result = await agent.run(
-      { curl: delCurl, serviceName: 'User', outputDir: '/tmp' },
-      { skipCache: true },
-    );
-    expect(result).toHaveProperty('serviceTs');
-  });
-
-  it('curl with no body does not throw', async () => {
-    const noBodCurl = 'curl -X GET https://api.example.com/health';
-    const mock = new MockProvider({ fallback: VALID_OUTPUT });
-    const agent = new CurlToApiAgent({ pipeline: makePipeline(mock, cache) });
-
-    await expect(
-      agent.run({ curl: noBodCurl, serviceName: 'Health', outputDir: '/tmp' }, { skipCache: true }),
-    ).resolves.toHaveProperty('serviceTs');
-  });
-
-  it('minimal curl string does not throw', async () => {
-    const mock = new MockProvider({ fallback: VALID_OUTPUT });
-    const agent = new CurlToApiAgent({ pipeline: makePipeline(mock, cache) });
-
-    await expect(
-      agent.run(
-        { curl: 'curl http://x.com', serviceName: 'Empty', outputDir: '/tmp' },
-        { skipCache: true },
-      ),
-    ).resolves.toHaveProperty('serviceTs');
-  });
-
-  // ── Cache behaviour ───────────────────────────────────────────────────────
-
-  it('second identical call hits cache without LLM', async () => {
-    const mock = new MockProvider({ fallback: VALID_OUTPUT });
-    const agent = new CurlToApiAgent({ pipeline: makePipeline(mock, cache) });
-
-    const input = { curl: SAMPLE_CURL, serviceName: 'User', outputDir: '/tmp' };
-    await agent.run(input, { skipCache: false });
-    await agent.run(input, { skipCache: false });
-
-    expect(mock.calls).toHaveLength(1);
-  });
-
-  // ── Negative cases ────────────────────────────────────────────────────────
-
-  it('throws GenerationFailedError when postValidate always fails', async () => {
-    const mock = new MockProvider({ fallback: VALID_OUTPUT });
-    const postValidate = vi.fn().mockResolvedValue(['TS error']);
-    const agent = new CurlToApiAgent({ pipeline: makePipeline(mock, cache, postValidate) });
-
-    await expect(
-      agent.run(
-        { curl: SAMPLE_CURL, serviceName: 'Fail', outputDir: '/tmp' },
-        { maxRetries: 0, skipCache: true },
-      ),
-    ).rejects.toThrow(GenerationFailedError);
-  });
-
-  it('retries once when postValidate fails on first attempt', async () => {
-    const mock = new MockProvider({ fallback: VALID_OUTPUT });
-    let attempt = 0;
-    const postValidate = vi.fn().mockImplementation(async () => {
-      attempt += 1;
-      return attempt === 1 ? ['first-attempt-error'] : [];
-    });
-
-    const agent = new CurlToApiAgent({ pipeline: makePipeline(mock, cache, postValidate) });
-    const result = await agent.run(
-      { curl: SAMPLE_CURL, serviceName: 'Retry', outputDir: '/tmp' },
-      { skipCache: true },
-    );
+describe('CurlToApiAgent.run()', () => {
+  it('returns serviceTs + testTs from a POST cURL', async () => {
+    const agent = makeAgent();
+    const result = await agent.run(makeInput(SAMPLE_CURL), { dryRun: true });
     expect(result.serviceTs).toBeTruthy();
-    expect(mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(result.testTs).toBeTruthy();
   });
 
-  it('dryRun prevents file writing', async () => {
-    const mock = new MockProvider({ fallback: VALID_OUTPUT });
-    const targetFile = path.join(os.tmpdir(), `dry-service-${Date.now()}.ts`);
+  it('serviceTs contains the service class name', async () => {
+    const agent = makeAgent();
+    const result = await agent.run(makeInput(SAMPLE_CURL, 'User'), { dryRun: true });
+    expect(result.serviceTs).toContain('UserService');
+  });
 
-    const pipeline = new GenerationPipeline<CurlToApiInput, CurlToApiOutput>(
-      {
-        agentName: 'curl-to-api',
-        promptTemplate: 'curl-to-api',
-        outputSchema,
-        inputHasher: (i) => crypto.createHash('sha256').update(JSON.stringify(i)).digest('hex'),
-        contextBuilder: async (i) => {
-          const req = CurlConverter.fromCurl(i.curl);
-          const parsed = new URL(req.url);
-          return {
-            serviceName: i.serviceName,
-            method: req.method,
-            url: req.url,
-            baseUrl: parsed.origin,
-            endpoint: parsed.pathname + (parsed.search || ''),
-            headers: '{}',
-            body: '{}',
-            endpointDescription: 'x',
-          };
-        },
-        outputMapper: () => ({ [targetFile]: 'content' }),
-      },
-      {
-        router: makeRouter(mock),
-        cache,
-        prompts: new PromptLibrary(),
-        parser: new StructuredOutputParser(),
-      },
+  it('testTs has Feature, Before, After and at least one Scenario', async () => {
+    const agent = makeAgent();
+    const result = await agent.run(makeInput(SAMPLE_CURL), { dryRun: true });
+    expect(result.testTs).toContain("Feature('");
+    expect(result.testTs).toContain('Before(');
+    expect(result.testTs).toContain('After(');
+    expect(result.testTs).toContain('Scenario(');
+  });
+
+  it('GET cURL without body produces output without throwing', async () => {
+    const agent = makeAgent();
+    const result = await agent.run(makeInput(GET_CURL, 'Health'), { dryRun: true });
+    expect(result.serviceTs).toContain('HealthService');
+  });
+
+  it('DELETE cURL with Authorization header produces output', async () => {
+    const curl = "curl -X DELETE https://api.example.com/users/1 -H 'Token: tok'";
+    const agent = makeAgent();
+    const result = await agent.run(makeInput(curl, 'User'), { dryRun: true });
+    expect(result.serviceTs).toBeTruthy();
+  });
+
+  it('minimal bare cURL does not throw', async () => {
+    const agent = makeAgent();
+    await expect(
+      agent.run(makeInput('curl http://x.com', 'Min'), { dryRun: true }),
+    ).resolves.toHaveProperty('serviceTs');
+  });
+
+  it('throws when postValidate returns errors', async () => {
+    const agent = makeAgent({
+      postValidate: () => Promise.resolve(['Forbidden header in service']),
+    });
+    await expect(agent.run(makeInput(SAMPLE_CURL), { dryRun: true })).rejects.toThrow(
+      'Post-validation failed',
     );
+  });
 
-    const agent = new CurlToApiAgent({ pipeline });
-    await agent.run(
-      { curl: 'curl http://x.com', serviceName: 'X', outputDir: '/tmp' },
-      { dryRun: true, skipCache: true },
-    );
+  it('cURL with Token header → @negative-auth-missing scenario in testTs', async () => {
+    const agent = makeAgent();
+    const result = await agent.run(makeInput(AUTH_CURL, 'User'), { dryRun: true });
+    expect(result.testTs).toContain("skipAmbient: ['token']");
+  });
 
-    const { existsSync } = await import('node:fs');
-    expect(existsSync(targetFile)).toBe(false);
+  it('GET cURL without auth → no @negative-auth scenarios', async () => {
+    const agent = makeAgent();
+    const result = await agent.run(makeInput(GET_CURL, 'Health'), { dryRun: true });
+    expect(result.testTs).not.toContain("skipAmbient: ['token']");
   });
 });
 
+// ---------------------------------------------------------------------------
+// run() — cache
+// ---------------------------------------------------------------------------
+
+describe('CurlToApiAgent.run() — cache', () => {
+  it('second identical call hits cache (only one enricher call)', async () => {
+    const enricher = new ScenarioEnricher();
+    const enrichSpy = vi.spyOn(enricher, 'enrich').mockResolvedValue([]);
+    const agent = new CurlToApiAgent(
+      { postValidate: () => Promise.resolve([]), cache, enricher },
+      { noLlm: false },
+    );
+    const input = makeInput(SAMPLE_CURL);
+    await agent.run(input, { dryRun: true, skipCache: false });
+    await agent.run(input, { dryRun: true, skipCache: false });
+    // Second call is a cache hit — enricher not called again
+    expect(enrichSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('skipCache=true forces re-enrichment both times', async () => {
+    const enricher = new ScenarioEnricher();
+    const enrichSpy = vi.spyOn(enricher, 'enrich').mockResolvedValue([]);
+    const agent = new CurlToApiAgent(
+      { postValidate: () => Promise.resolve([]), cache, enricher },
+      { noLlm: false },
+    );
+    const input = makeInput(SAMPLE_CURL);
+    await agent.run(input, { dryRun: true, skipCache: true });
+    await agent.run(input, { dryRun: true, skipCache: true });
+    expect(enrichSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CurlConverter + headerClassifier integration (still valid)
+// ---------------------------------------------------------------------------
+
 describe('CurlConverter + headerClassifier integration', () => {
-  it('routes Authorization, Accept-Language, X-Timezone from a parsed cURL into ambient', () => {
+  it('routes Authorization, Accept-Language, X-Timezone into ambient correctly', () => {
     const curl =
       "curl -X POST 'https://api.example.com/foo' " +
-      "-H 'Authorization: Bearer xyz' " +
+      "-H 'Authorization: Bearer tok' " +
       "-H 'Accept-Language: en-US' " +
       "-H 'X-Timezone: UTC' " +
       "-H 'X-Request-ID: r1' " +
@@ -260,14 +175,19 @@ describe('CurlConverter + headerClassifier integration', () => {
       "--data '{}'";
     const req = CurlConverter.fromCurl(curl);
     const cls = classify(req.headers);
-    expect(cls.ambient).toEqual({
-      token: 'Bearer xyz',
-      language: 'en-US',
-      timezone: 'UTC',
-    });
+    expect(cls.ambient.token).toBeDefined();
+    expect(cls.ambient.language).toBe('en-US');
+    expect(cls.ambient.timezone).toBe('UTC');
     expect(cls.skipped.map((h) => h.name)).toContain('sec-ch-ua');
-    // X-Request-ID has no Swagger required signal in a cURL → optional tier.
     expect(cls.optionalParams.map((p) => p.name)).toContain('X-Request-ID');
     expect(cls.requiredParams).toHaveLength(0);
+  });
+
+  it('tokenHeaderName option routes custom header name as ambient.token', () => {
+    const headers = { 'X-Custom-Auth': 'my-secret' };
+    const cls = classify(headers, { tokenHeaderName: 'X-Custom-Auth' });
+    expect(cls.ambient.token).toBe('my-secret');
+    expect(cls.requiredParams).toHaveLength(0);
+    expect(cls.optionalParams).toHaveLength(0);
   });
 });

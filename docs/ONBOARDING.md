@@ -32,7 +32,7 @@ cp .env.example .env.dev
 ```bash
 npm run typecheck        # phải pass — không có lỗi TypeScript
 npm run lint             # phải pass (1 warning ở scripts/generate-allure-report.ts là acceptable)
-npm run test:unit        # 249 tests qua 21 files, không cần browser hay server
+npm run test:unit        # 619 tests qua 40 files, không cần browser hay server
 ```
 
 **Chạy E2E (cần app đang chạy):**
@@ -235,14 +235,24 @@ npm run gen:page -- --url https://example.com --name Example --dry-run
 
 ```bash
 # Copy cURL từ browser DevTools Network tab
-npm run gen:api -- \
-  --curl 'curl -X POST https://api.example.com/orders -H "Content-Type: application/json" -d "{\"productId\":1}"' \
-  --name Order
+npm run gen:curl -- \
+  --input 'curl -X POST https://api.example.com/orders -H "Content-Type: application/json" -d "{\"productId\":1}"' \
+  --service-name Order
 ```
 
 Output:
 - `src/api/services/OrderService.ts`
 - `tests/api/smoke/order.test.ts`
+
+**Gen API từ Swagger spec (toàn bộ):**
+
+```bash
+npm run gen:swagger -- --input https://api.example.com/swagger.json --no-llm
+```
+
+Output per endpoint trong spec:
+- `src/api/services/*Service.ts`
+- `tests/api/regression/*.test.ts` (positive + negative cases)
 
 Review và chạy `npm run typecheck`.
 
@@ -318,9 +328,15 @@ AI_HEAL_ENABLED=true ENV=dev npm run test:ui:ai    # self-healing mode
 npm run heal:report                                 # xem heal stats
 
 # Code gen
-npm run gen:page -- --url <URL> --name <Name>
-npm run gen:api -- --curl '<cURL>' --name <Name>
-npm run gen:scenario -- --description '<mô tả>'
+npm run gen:page -- --url <URL> --page-name <Name>
+npm run gen:curl -- --input '<cURL>' --service-name <Name>
+npm run gen:swagger -- --input <URL|file>
+npm run gen:scenario -- --story '<user story>' --feature-name <Name>
+
+# API test shortcuts
+ENV=dev npm run test:api:daily       # full @api suite (daily health check)
+ENV=dev npm run test:api:smoke       # quick @smoke gate
+ENV=dev npm run test:api:negative    # debug error paths
 
 # Xem report
 npm run report:allure                # generate + mở

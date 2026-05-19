@@ -53,6 +53,12 @@ export interface ClassifyOpts {
    * Auto-classified as ambient `token` so they're not duplicated as method args.
    */
   securityHeaderNames?: string[];
+  /**
+   * Configured token header name (from `config.apiHeaderNames.token`, default `'Token'`).
+   * Headers matching this name are also routed as ambient.token even if they are not
+   * listed in `securityHeaderNames` and not in `AMBIENT_TOKEN_ALIASES`.
+   */
+  tokenHeaderName?: string;
 }
 
 function inferParamType(schema?: { type?: string }): string {
@@ -112,6 +118,13 @@ export function classify(
       continue;
     }
     if (securitySet.has(name.toLowerCase())) {
+      if (!result.ambient.token) result.ambient.token = value || '<from-config>';
+      continue;
+    }
+    // Also treat headers matching the configured token name as ambient, covering
+    // non-standard names (e.g. X-Custom-Auth) not in AMBIENT_TOKEN_ALIASES.
+    const configuredTokenName = (opts.tokenHeaderName ?? 'Token').toLowerCase();
+    if (name.toLowerCase() === configuredTokenName) {
       if (!result.ambient.token) result.ambient.token = value || '<from-config>';
       continue;
     }

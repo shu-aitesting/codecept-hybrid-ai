@@ -156,7 +156,13 @@ export function swaggerToModel(
 
 function paramToConstraint(p: SwaggerParameter): FieldConstraint {
   const schema = (p.schema ?? {}) as Record<string, unknown>;
-  const schemaType = typeof schema['type'] === 'string' ? schema['type'] : 'string';
+  // Swagger 2.0 puts type directly on the param object (not under schema).
+  // normalizeParameters doesn't carry it forward, so we cast and read it here.
+  // Swagger 2.0 puts type directly on the param; normalizeParameters doesn't carry it into schema.
+  const directType = (p as unknown as Record<string, unknown>)['type'];
+  let schemaType = 'string';
+  if (typeof schema['type'] === 'string') schemaType = schema['type'];
+  else if (typeof directType === 'string') schemaType = directType;
   const c: FieldConstraint = {
     path: p.name,
     type: schemaType,

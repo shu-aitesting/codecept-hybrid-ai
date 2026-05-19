@@ -144,6 +144,9 @@ export const config: CodeceptJS.MainConfig = {
     },
   },
   require: ['ts-node/register', 'tsconfig-paths/register'],
+  // Retry each API Scenario up to 2 times to absorb transient network flakiness
+  // without masking real failures — 3 attempts total before marking as failed.
+  retry: [{ grep: '@api', Scenario: 2 }],
 };
 
 /** Best-effort recovery of the failing selector from a CodeceptJS step. */

@@ -6,12 +6,12 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import ora from 'ora';
 
-import '../src/core/config/ConfigLoader';
 import { CurlToApiAgent } from '../src/ai/codegen/CurlToApiAgent';
 import { HtmlToFragmentAgent } from '../src/ai/codegen/HtmlToFragmentAgent';
 import { ScenarioGeneratorAgent } from '../src/ai/codegen/ScenarioGeneratorAgent';
 import { SwaggerToApiAgent } from '../src/ai/codegen/SwaggerToApiAgent';
 import { SwaggerParser } from '../src/api/swagger/SwaggerParser';
+import { config } from '../src/core/config/ConfigLoader';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -325,6 +325,21 @@ program
   .option('--preview', 'Preview output without writing files')
   .option('--skip-cache', 'Skip idempotency cache (re-call LLM)')
   .option('--max-retries <n>', 'Max LLM retries on validation failure', '2')
+  // ── New flags (PR-8) ─────────────────────────────────────────────────────
+  .option('--exclude <patterns>', 'Comma-separated operationId glob patterns to skip')
+  .option(
+    '--required-headers <names>',
+    'Comma-separated header names that must appear in every request',
+  )
+  .option(
+    '--auth-negative-cases <mode>',
+    'Which auth-negative plans to emit: missing | invalid | both',
+    'both',
+  )
+  .option('--seed <n>', 'Fixed integer seed for DataFactory (default: hash of input)')
+  .option('--include-optional', 'Include optional fields in generated payloads')
+  .option('--no-llm', 'Skip ScenarioEnricher LLM call; use deterministic auto-titles')
+  .option('--dry-data', 'Print generated payloads to stdout and exit without writing files')
   .action(async (opts: Record<string, string | boolean>) => {
     const input = opts['input'] as string | undefined;
     if (!input) {
@@ -363,16 +378,33 @@ program
       ),
     );
 
-    // ── Step 3: Generate per group ──────────────────────────────────────────
-    const agent = new SwaggerToApiAgent();
-    const outputDir = opts['output'] as string;
-    const testOutputDir = opts['testOutput'] as string;
-    const dryRun = !!opts['preview'];
+    // ── Step 3: Build agent opts from CLI flags ─────────────────────────────
+    const excludeStr = opts['exclude'] as string | undefined;
+    const requiredHeadersStr = opts['requiredHeaders'] as string | undefined;
+    const authNegativeCases = opts['authNegativeCases'] as 'missing' | 'invalid' | 'both';
+    const seedRaw = opts['seed'] as string | undefined;
+
+    const agentOpts = {
+      exclude: excludeStr ? excludeStr.split(',').map((s) => s.trim()) : undefined,
+      requiredHeaders: requiredHeadersStr
+        ? requiredHeadersStr.split(',').map((s) => s.trim())
+        : undefined,
+      authNegativeCases,
+      seed: seedRaw !== undefined ? Number(seedRaw) : undefined,
+      includeOptional: !!opts['includeOptional'],
+      noLlm: opts['llm'] === false,
+    };
+
+    const dryData = !!opts['dryData'];
+    const dryRun = !!opts['preview'] || dryData;
     const skipCache = !!opts['skipCache'];
     const maxRetries = Number(opts['maxRetries'] ?? 2);
-
+    const outputDir = opts['output'] as string;
+    const testOutputDir = opts['testOutput'] as string;
     const generatedParsed = { ...parsed, groups };
 
+    // ── Step 4: Generate per group ──────────────────────────────────────────
+    const agent = new SwaggerToApiAgent({ apiHeaderNames: config.apiHeaderNames }, agentOpts);
     let groupSpinner: ReturnType<typeof ora> | null = null;
 
     const results = await agent
@@ -395,10 +427,17 @@ program
         process.exit(1);
       });
 
-    // ── Step 4: Output results ──────────────────────────────────────────────
+    // ── Step 5: Output results ──────────────────────────────────────────────
     if (!results) return;
 
-    if (dryRun) {
+    if (dryData) {
+      for (const [groupName, output] of results) {
+        console.log('\n' + chalk.cyan(`══ ${groupName} — serviceTs ══`));
+        console.log(output.serviceTs);
+        console.log('\n' + chalk.cyan(`══ ${groupName} — testTs ══`));
+        console.log(output.testTs);
+      }
+    } else if (dryRun) {
       for (const [groupName, output] of results) {
         console.log('\n' + chalk.cyan(`══ ${groupName}Service.ts ══`));
         console.log(output.serviceTs);
@@ -414,6 +453,119 @@ program
         console.log(`  ${chalk.dim('test   ')}  ${testFile}`);
       }
       console.log(chalk.dim('\nRun `npm run typecheck` to verify.'));
+    }
+  });
+
+// ─── gen curl ────────────────────────────────────────────────────────────────
+program
+  .command('curl')
+  .description('Generate Service + API Test from a single cURL command')
+  .option('--input <path>', 'Read cURL command from file (preferred on Windows PowerShell)')
+  .option('--curl <curl>', 'Inline cURL command string')
+  .option(
+    '--service-name <name>',
+    'Service class name (PascalCase, without "Service" suffix)',
+    'Generated',
+  )
+  .option(
+    '--output-dir <dir>',
+    'Root output directory for Service files',
+    path.join(process.cwd(), 'src', 'api'),
+  )
+  .option('--preview', 'Preview output without writing files')
+  .option('--skip-cache', 'Skip idempotency cache')
+  // ── New flags (PR-8) ─────────────────────────────────────────────────────
+  .option('--exclude <patterns>', 'Comma-separated operationId patterns to skip')
+  .option('--required-headers <names>', 'Comma-separated required header names')
+  .option(
+    '--auth-negative-cases <mode>',
+    'Which auth-negative plans to emit: missing | invalid | both',
+    'both',
+  )
+  .option('--seed <n>', 'Fixed integer seed for DataFactory')
+  .option('--include-optional', 'Include optional fields in generated payloads')
+  .option('--no-llm', 'Skip ScenarioEnricher LLM call; use deterministic auto-titles')
+  .option('--dry-data', 'Print generated payloads to stdout and exit without writing files')
+  .option('--with-response <path>', 'JSON file containing an example response body')
+  .option('--expected-status <code>', 'Expected HTTP status code for --with-response mode', '200')
+  .option(
+    '--path-template <pattern>',
+    'Override URL path tokenization, e.g. /users/{userId}/orders/{orderId}',
+  )
+  .action(async (opts: Record<string, string | boolean>) => {
+    let curl = '';
+    const inputFile = opts['input'] as string | undefined;
+    if (inputFile) {
+      if (!fs.existsSync(inputFile)) {
+        console.error(chalk.red(`File not found: ${inputFile}`));
+        process.exit(1);
+      }
+      curl = fs.readFileSync(inputFile, 'utf8').trim();
+    } else if (opts['curl']) {
+      curl = opts['curl'] as string;
+    } else {
+      console.error(chalk.red('Provide --input <path> or --curl <command>'));
+      process.exit(1);
+    }
+
+    // ── Build agent opts ────────────────────────────────────────────────────
+    const excludeStr = opts['exclude'] as string | undefined;
+    const requiredHeadersStr = opts['requiredHeaders'] as string | undefined;
+    const seedRaw = opts['seed'] as string | undefined;
+
+    let withResponse: unknown;
+    const withResponsePath = opts['withResponse'] as string | undefined;
+    if (withResponsePath) {
+      if (!fs.existsSync(withResponsePath)) {
+        console.error(chalk.red(`--with-response file not found: ${withResponsePath}`));
+        process.exit(1);
+      }
+      try {
+        withResponse = JSON.parse(fs.readFileSync(withResponsePath, 'utf8'));
+      } catch {
+        console.error(chalk.red(`--with-response file is not valid JSON: ${withResponsePath}`));
+        process.exit(1);
+      }
+    }
+
+    const agentOpts = {
+      exclude: excludeStr ? excludeStr.split(',').map((s) => s.trim()) : undefined,
+      requiredHeaders: requiredHeadersStr
+        ? requiredHeadersStr.split(',').map((s) => s.trim())
+        : undefined,
+      authNegativeCases: opts['authNegativeCases'] as 'missing' | 'invalid' | 'both',
+      seed: seedRaw !== undefined ? Number(seedRaw) : undefined,
+      includeOptional: !!opts['includeOptional'],
+      noLlm: opts['llm'] === false,
+      withResponse,
+      expectedStatus: Number(opts['expectedStatus'] ?? 200),
+      pathTemplate: opts['pathTemplate'] as string | undefined,
+    };
+
+    const dryData = !!opts['dryData'];
+    const dryRun = !!opts['preview'] || dryData;
+    const outputDir = opts['outputDir'] as string;
+
+    const spinner = ora('Generating Service + API Test from cURL…').start();
+    try {
+      const agent = new CurlToApiAgent({}, agentOpts);
+      const result = await agent.run(
+        { curl, serviceName: opts['serviceName'] as string, outputDir },
+        { dryRun, skipCache: !!opts['skipCache'] },
+      );
+      spinner.succeed('Generated');
+      if (dryData || dryRun) {
+        console.log('\n' + chalk.cyan('── serviceTs ──'));
+        console.log(result.serviceTs);
+        console.log('\n' + chalk.cyan('── testTs ──'));
+        console.log(result.testTs);
+      } else {
+        console.log(chalk.green('Files written.'));
+        console.log(chalk.dim('Run `npm run typecheck` to verify.'));
+      }
+    } catch (err) {
+      spinner.fail(`Generation failed: ${(err as Error).message}`);
+      process.exit(1);
     }
   });
 

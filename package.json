@@ -34,8 +34,11 @@
     "gen:api": "ts-node -r tsconfig-paths/register scripts/gen.ts api",
     "gen:scenario": "ts-node -r tsconfig-paths/register scripts/gen.ts scenario",
     "gen:swagger": "ts-node -r tsconfig-paths/register scripts/gen.ts swagger",
+    "gen:curl": "ts-node -r tsconfig-paths/register scripts/gen.ts curl",
     "test:health": "codeceptjs run --grep @health",
-    "test:api:smoke": "codeceptjs run --grep @api --grep @smoke",
+    "test:api:smoke": "codeceptjs run --grep @smoke",
+    "test:api:daily": "codeceptjs run --grep @api",
+    "test:api:negative": "codeceptjs run --grep @negative-",
     "test:api:full": "codeceptjs run --grep @api",
     "codegen:report": "ts-node -r tsconfig-paths/register scripts/codegen-report.ts"
   },

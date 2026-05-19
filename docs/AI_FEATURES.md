@@ -124,35 +124,82 @@ tests/ui/smoke/checkout.smoke.test.ts           ← test cơ bản
 
 ---
 
-### gen api — Service Object + Test từ cURL
+### gen:curl — Service Object + Test từ cURL
 
 ```bash
 # Copy cURL từ browser DevTools → Network tab → chuột phải request → Copy as cURL
-npm run gen:api -- \
-  --curl 'curl -X POST https://api.example.com/orders \
-    -H "Authorization: Bearer token" \
+npm run gen:curl -- \
+  --input 'curl -X POST https://api.example.com/orders \
     -H "Content-Type: application/json" \
     -d "{\"productId\":1,\"quantity\":2}"' \
-  --name Order
+  --service-name Order
 
 # Từ file
-npm run gen:api -- --curl-file /tmp/create-order.curl --name Order
+npm run gen:curl -- --input /tmp/create-order.curl --service-name Order
 
-# Dry-run
-npm run gen:api -- --curl 'curl ...' --name Order --dry-run
+# Dry-run (hiển thị nội dung file mà không ghi)
+npm run gen:curl -- --input /tmp/order.curl --service-name Order --dry-run
+
+# Không dùng LLM để đặt tiêu đề scenario (auto-title, tiết kiệm token)
+npm run gen:curl -- --input /tmp/order.curl --service-name Order --no-llm
+
+# In test data payload ra stdout mà không ghi file
+npm run gen:curl -- --input /tmp/order.curl --service-name Order --dry-data
 ```
+
+> `gen:api` là alias cũ của `gen:curl` — vẫn hoạt động nhưng không còn được khuyến nghị.
 
 **Output (2 files):**
 
 ```
 src/api/services/OrderService.ts    ← service object với typed methods
-tests/api/smoke/order.test.ts       ← test cho happy path + error cases
+tests/api/smoke/order.test.ts       ← positive + negative test cases
 ```
 
 **Sau khi gen:**
 1. `npm run typecheck`
 2. Service tự dùng `config.apiUrl` + relative endpoint — không cần điền URL thủ công
 3. `ENV=dev npm run test:api`
+
+---
+
+### gen:swagger — Service Objects + Tests từ Swagger spec
+
+```bash
+# Từ URL (OpenAPI JSON/YAML)
+npm run gen:swagger -- --input https://api.example.com/swagger.json
+
+# Từ file local
+npm run gen:swagger -- --input ./docs/api-spec.yaml
+
+# Lọc theo tag hoặc path
+npm run gen:swagger -- --input ./docs/api-spec.yaml --exclude "/internal/*"
+
+# Chỉ required fields trong test data (không gen optional)
+npm run gen:swagger -- --input ./docs/api-spec.yaml --include-optional false
+
+# Sinh cả auth negative cases (không có token + sai token)
+npm run gen:swagger -- --input ./docs/api-spec.yaml --auth-negative-cases both
+
+# Seed cố định để tái tạo cùng test data
+npm run gen:swagger -- --input ./docs/api-spec.yaml --seed 12345
+
+# Không dùng LLM (auto-title từ template)
+npm run gen:swagger -- --input ./docs/api-spec.yaml --no-llm
+```
+
+**Output per endpoint:**
+
+```
+src/api/services/<Name>Service.ts   ← typed service class
+tests/api/regression/<name>.test.ts ← positive + negative cases
+```
+
+**Negative test cases tự động sinh từ JSON Schema:**
+- `missing-required` — thiếu field bắt buộc → expect 400
+- `wrong-type` — sai type (`string` thay `number`) → expect 400
+- `boundary-min` / `boundary-max` — giá trị vượt min/max → expect 400/422
+- `@negative-auth-*` — no token / sai token → expect 401/403
 
 ---
 
@@ -180,6 +227,23 @@ Prompt template được cấu hình để generate ít nhất:
 - 2 boundary cases (`.tag('@negative')`)
 
 **Lưu ý:** Output là CodeceptJS TypeScript, không phải Gherkin `.feature`. Step Object skeleton cần review để đảm bảo các method delegate đúng đến fragment methods (không truy cập `.selectors` trực tiếp).
+
+---
+
+## Daily API Health Check
+
+GitHub Actions workflow `.github/workflows/api-daily-health.yml` chạy toàn bộ `@api` suite lúc 2am UTC mỗi ngày:
+
+```bash
+# Tương đương với workflow chạy
+npm run test:api:daily        # codeceptjs run --grep @api (retry 2x per scenario)
+npm run test:api:smoke        # quick smoke — chỉ @smoke
+npm run test:api:negative     # debug error paths — chỉ @negative-
+```
+
+**Artifacts:** Allure report được upload với retention 14 ngày (`workflow_dispatch` để chạy thủ công bất cứ lúc nào).
+
+**Retry:** `codecept.conf.ts` cấu hình `retry: [{ grep: '@api', Scenario: 2 }]` — mỗi `@api` scenario tự retry 2 lần trước khi fail thật sự.
 
 ---
 

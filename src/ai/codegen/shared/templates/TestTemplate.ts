@@ -17,7 +17,7 @@ export function renderTest(
 ): string {
   const groupPascal = toPascalCase(group.groupName);
   const className = `${groupPascal}Service`;
-  const importPath = opts?.serviceImportPath ?? `../../services/${groupPascal}Service`;
+  const importPath = opts?.serviceImportPath ?? `@api/services/${groupPascal}Service`;
 
   // Collect schema const names and request interface names used in plans
   const schemaConstNames: string[] = [];
@@ -145,7 +145,7 @@ function renderNegativeValidationBody(rp: RenderablePlan, _className: string): s
 
   if (payload !== undefined) {
     const opPascal = toPascalCase(plan.endpoint.operationId);
-    lines.push(`  const payload = ${JSON.stringify(payload)} as ${opPascal}Request;`);
+    lines.push(`  const payload = ${JSON.stringify(payload)} as unknown as ${opPascal}Request;`);
     const call = buildServiceCallWithPayloadVar(rp, 'svc', 'payload');
     lines.push(`  const res = await ${call};`);
   } else {
@@ -224,7 +224,22 @@ function buildServiceCallWithPayloadVar(
   for (const p of ep.pathParams) {
     const isMutated = plan.kind !== 'positive' && plan.mutation?.path === p.name;
     const tsType = p.constraints[0]?.type;
-    args.push(isMutated ? '0' : tsType === 'integer' || tsType === 'number' ? '1' : "'1'");
+    const isNumeric = tsType === 'integer' || tsType === 'number';
+    args.push(isMutated ? (isNumeric ? '0' : "'0'") : isNumeric ? '1' : "'1'");
+  }
+
+  // Required query params (positional args in service signature)
+  for (const q of ep.queryParams.filter((q) => q.required)) {
+    const isMutated = plan.kind === 'negative-validation' && plan.mutation?.path === q.name;
+    const tsType = q.constraints[0]?.type;
+    const isNumeric = tsType === 'integer' || tsType === 'number';
+    if (isMutated) {
+      args.push(isNumeric ? '0' : "'invalid-value'");
+    } else {
+      const firstEnum = q.constraints[0]?.enum?.[0];
+      if (firstEnum !== undefined) args.push(JSON.stringify(firstEnum));
+      else args.push(isNumeric ? '1' : "'placeholder'");
+    }
   }
 
   // Body
